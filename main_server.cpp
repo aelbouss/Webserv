@@ -13,8 +13,8 @@ int main(void)
     struct      sockaddr_in addr_cln;
     int         connsock_fd;
     socklen_t   cln_len;
-    char        buffer[1024] = {0};
     int         opt;
+    ssize_t     nb;
     // domain = which ip_address faily
     // which type  of  socket  either  tcp or  udp
     // protocol just set it  to  zero  it choose based on the  type .
@@ -59,7 +59,7 @@ int main(void)
         }
         std::cout << "lestening on the port 8080" << std::endl;
         std::cout << "the ready to accept incoming connections" << std::endl;
-        std::cout << "lest's gooooooooooo "<< std::endl;
+        std::cout << "lest's gooooooooooo \n"<< std::endl;
 
         cln_len = sizeof(addr_cln);
         connsock_fd = accept(sock_fd, (struct sockaddr *)&addr_cln, &cln_len);
@@ -71,9 +71,18 @@ int main(void)
         }
         // std::cout  << "a coonection catched with the IP address  : " << inet_ntoa(addr_cln.sin_addr) << std::endl;
         // std::cout  << "Port : " << ntohs(addr_cln.sin_port) << std::endl
-
-        recv(connsock_fd, buffer, 1024, 0);
-        std::cout << "MSG : " << buffer << std::endl;
+        char        buffer[1024] = {0};
+        while (true)
+        {
+            nb = recv(connsock_fd, buffer, 1024, 0);
+            if (nb <= 0)
+            {
+                std::cout << "Client Desconnected " << std::endl;
+                break ;
+            }
+            std::cout  << "The msg recieved  : "<< buffer << std::endl;
+            send(connsock_fd, buffer, 1024, 0);
+        }
         close (connsock_fd);
     }
     return (0);
