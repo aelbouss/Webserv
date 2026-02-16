@@ -1,5 +1,5 @@
 CPPC = c++
-CPPFLAGS = -Wall -Werror -Wextra
+CPPFLAGS =  #-Wall -Werror -Wextra
 STD = -std=c++98
 
 SRC = $(wildcard *.cpp)

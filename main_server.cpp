@@ -8,6 +8,7 @@
 # include <fcntl.h>
 # include <vector>
 # include <poll.h>
+# include <bits/stdc++.h>
 
 int main(void)
 {
@@ -18,16 +19,12 @@ int main(void)
     socklen_t   cln_len;
     int         opt;
     ssize_t     nb;
-    std::vector <struct pollfd> fds;
-    struct  pollfd lsn;
-    struct  pollfd new_cln;
     int ret_p;
     char   buffer[1024];
 
-    // int socket_flag;
-    // domain = which ip_address faily
-    // which type  of  socket  either  tcp or  udp
-    // protocol just set it  to  zero  it choose based on the  type .
+    /*
+     * create  the  socket  which is  the connection end 
+     */
 
     sock_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (sock_fd == -1)
@@ -35,12 +32,8 @@ int main(void)
         std::cerr << "Failed To Create A Socket" << std::endl;
         return (-1);
     }
-    // create  the struct of the  main door which  will  just  accept connections
-    lsn.fd = sock_fd;
-    lsn.events = POLLIN;
-    fds.push_back(lsn);
+     fcntl(sock_fd, F_SETFL, O_NONBLOCK);
 
-    fcntl(sock_fd, F_GETFL, 0);
     std::cout  << "the socket created ... " << std::endl;
     // fill the container  that holds  the  essential  informations  for the  socket .
     addr.sin_family = AF_INET ;
@@ -48,11 +41,20 @@ int main(void)
     addr.sin_addr.s_addr = INADDR_ANY;
 
     opt = 1;
+
+    /*
+     * allow  the  socket to  be reused
+     */
     if ( setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1)
     {
         std::cerr << "ERROR " << std::endl;
         return (1);
     }
+
+    /*
+     *  bind an ip address and a port to the socket to be visible in the network 
+     */
+
     if (bind(sock_fd, (struct sockaddr *)&addr, sizeof(addr)) == -1)
     {
         std::cerr << "Bind syscall failed" << std::endl;
@@ -62,24 +64,10 @@ int main(void)
         return (1);
     }
 
-    // turning the socket to non blocking mode
-
-    // socket_flag = fcntl(sock_fd, F_GETFL, 0);
-    // if (socket_flag == -1)
-    // {
-    //     std::cerr << "fcntl get failed :" << std::endl;
-    //     return (1);
-    // }
-    // if (fcntl(sock_fd, F_SETFL, socket_flag | O_NONBLOCK) == -1)
-    // {
-    //     std::cerr << "fcntl failed" << std::endl;
-    //     return (-1);
-    // }
-    // std::cout  << "the bind syscall works correctly ..." << std::endl;
-    // // setup  the  socket  to  accept  incoming  connections .
-
-    // =============================================================================
-    // the event handling  part 
+    /*
+     *  turn  the  flag of  the  socket  of pasive make  it accept connections
+     *  create a queue that  will holds  the  pending  connections . 
+     */
 
     if (listen(sock_fd, 5) == -1)
     {
@@ -87,72 +75,122 @@ int main(void)
         close(sock_fd);
         return (1);
     }
-    // std::cout << "lestening on the port 8080" << std::endl;
-    // std::cout << "the ready to accept incoming connections" << std::endl;
-    // std::cout << "lest's gooooooooooo \n"<< std::endl;
-
     cln_len = sizeof(addr_cln);
+
+
+    // ================  one  client  per  time ==================================
+
+    // while (true)
+    // {
+
+    //     /*
+    //      * the os  take the  connection  handle  their connection put them in the queue created by listen  
+    //      * the accept syscall pick up the clients in the queue and conect with them
+    //      * give each new client a badge (new socket) to use it for the connection
+    //      */
+
+    //     cln_fd = accept(sock_fd, (struct sockaddr *)&addr_cln, &cln_len) ;
+    //     if (cln_fd == -1)
+    //     {
+    //         std::cerr << "Bad socket something went wrong" << std::endl;
+    //         close(sock_fd);
+    //         return (1);
+    //     }
+    //     memset(buffer, '\0', sizeof(buffer));
+    //     while (true)
+    //     {
+    //         nb = recv(cln_fd, buffer, sizeof(buffer), 0);
+    //         if (nb <= 0)
+    //         {
+    //             std::cout << "The connection finished [* _ *]" << std::endl;
+    //             close(cln_fd);
+    //             break;
+    //         }
+    //         std::cout << "The reieved msg is : "<< buffer<< std::endl;
+    //          memset(buffer, '\0', sizeof(buffer));
+    //     }
+    //     std::cout  << "returned here" << std::endl;
+    // }
+
+
+    // ============================ multi client per time =========================================
+
+    /*
+     *  handle multiple  clients simultaneously
+     *  multiplexing
+     */
+
+    std::vector <struct pollfd > fds;
+    struct  pollfd lsn;
+    struct  pollfd new_cln;
+    int     new_badge;
+    int     pr;
+
+
+    lsn.fd = sock_fd;
+    lsn.events = POLLIN;
+
+    fds.push_back(lsn);
+
+
+
+    /*
+     * a server  that handles  many  clients  simultaneously .
+     */
+
     while (true)
     {
-        ret_p   = poll(&fds[0], fds.size(), -1);
+        pr = poll(&fds[0], fds.size(), -1);
 
-        if (ret_p < 0)
-            break ;
         for (size_t i = 0 ; i < fds.size() ; i++)
         {
-            if (fds[i].fd == sock_fd)
+            if (fds[i].revents == 0)
+                continue;
+
+            /* add a new client to the watched  list */
+
+            /* actually there is a  dta  to read */
+            if (fds[i].revents & POLLIN)
             {
-                cln_fd = accept(fds[i].fd, (struct sockaddr *)&addr_cln , &cln_len);
-                fcntl(cln_fd, F_GETFL, 0);
-                new_cln.fd = cln_fd;
-                new_cln.events = POLLIN;
-                fds.push_back(new_cln);
-            }
-            else
-            {
-                while (true)
+                /* if  it's a  new client */
+                if (fds[i].fd == sock_fd)
                 {
-                    nb = recv(fds[i].fd, buffer , 1024, 0);
-                    if (nb <= 0)
+                    new_badge = accept(fds[i].fd , NULL, NULL);
+                    if(new_badge > 0)
+                     fcntl(new_badge, F_SETFL, O_NONBLOCK);
+                    new_cln.fd = new_badge;
+                    new_cln.events = POLLIN;
+                    new_cln.revents = 0;
+                    fds.push_back(new_cln);
+                    std::cout << "a new client connected its id is : " << new_cln.fd << std::endl;
+                }
+                else
+                {
+                    /* if it's already an existing client */
+
+                    while (true)
                     {
-                        std::cerr << "The Client Disconnected" << std::endl;
-                        close(fds[i].fd);
-                        break ;
+                        memset(buffer, '\0', sizeof(buffer));
+                        nb = recv(fds[i].fd, buffer, sizeof(buffer), 0);
+                        if (nb == 0)
+                        {
+                            std::cout << "the nb : "<< nb<< std::endl;
+                            close (fds[i].fd);
+                            fds.erase(fds.begin() + i);
+                            i--;
+                            std::cout << "The client : " << fds[i].fd << " disconnected"<< std::endl;
+                            break;
+                        }
+                        else
+                        {
+                            std::cout << "the client : " << fds[i].fd << " sent : " << buffer << std::endl;
+                            break ;
+                        }
                     }
-                    std::cout << "The msg received :  " << buffer << std::endl;
                 }
             }
-            if (nb <= 0)
-                break;
         }
+    }
 
-     }
-       // close(sock_fd);
-       
-        // cln_len = sizeof(addr_cln);
-        // connsock_fd = accept(sock_fd, (struct sockaddr *)&addr_cln, &cln_len);
-        // if(connsock_fd == -1)
-        // {
-        //     std::cerr << "failed  to  accept  connections " << std::endl;
-        //     close (sock_fd);
-        //     return (-1);
-        // }
-        //  fcntl(connsock_fd, F_GETFL, 0);
-        // // std::cout  << "a coonection catched with the IP address  : " << inet_ntoa(addr_cln.sin_addr) << std::endl;
-        // // std::cout  << "Port : " << ntohs(addr_cln.sin_port) << std::endl
-        // char        buffer[1024] = {0};
-        // while (true)
-        // {
-        //     nb = recv(connsock_fd, buffer, 1024, 0);
-        //     if (nb <= 0)
-        //     {
-        //         std::cout << "Client Desconnected " << std::endl;
-        //         break ;
-        //     }
-        //     std::cout  << "The msg recieved  : "<< buffer << std::endl;
-        //     send(connsock_fd, buffer, 1024, 0);
-        // }
-        // close (connsock_fd);
-   
     return (0);
 }
