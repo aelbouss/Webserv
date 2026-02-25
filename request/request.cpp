@@ -107,10 +107,20 @@ bool Request:parseHeaders()
 
 bool Request:parseBody()
 {
+    size_t contentLenght = std::stoi(_headers["Content-Length"]); // convert value of Content-Length from str to int
+    if (_buffer.size() < contentLenght) // wait for  _buffer finish all bvbody content bytes we need base on Content-Length
+        return false;
+    // store all content from 0 to Content-Length in _body
+    _body.insert(_buffer.end(), _buffer.begin(), _buffer.begin() + contentLenght);
+    //remove body copntent from _buffer
+    _body.erase(0, contentLenght);
+    //update satate
+    _state = FINISHED;
 
+    return true;
 }
 
-bool Request:isFinished()
+bool request::isFinished()
 {
-
+    return _state == FINISHED;
 }
