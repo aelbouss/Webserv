@@ -1,15 +1,12 @@
 #include <iostream>
 #include <map>
-#include <algorithme>
+#include <algorithm>
 
 
 
 
-class request
+class Request
 {
-    public:
-        enum Method { GET, POST, DELETE, UNKNOWN };
-        enum State { REQUEST_LINE, HEADERS, BODY, FINISHED, ERROR };
     private:
         Method      _method;
         std::string _path;
@@ -18,8 +15,14 @@ class request
         std::vector<char> _body;
         State       _state;
         std::string _buffer;
+
     public:
+        request();
+        enum Method { GET, POST, DELETE, UNKNOWN };
+        enum State { REQUEST_LINE, HEADERS, BODY, FINISHED, ERROR };
+
         void parse(const char* data, size_t size);
         bool isFinished();
+        
 };
 
