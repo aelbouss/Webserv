@@ -1,9 +1,14 @@
 #include "request.hpp"
+#include <cstdlib>
 
 
-request::request(): _method(UNKNOWN), _state(REQUEST_LINE) {}
+Request::Request(): _method(UNKNOWN), _state(REQUEST_LINE) {}
+Request::Method Request::getMethod() const { return _method; }
+const std::string& Request::getPath() const { return _path; }
+const std::string& Request::getVersion() const { return _version; }
+const std::vector<char>& Request::getBody() const { return _body; }
 
-void Request:parse(const char* data, size_t size)
+void Request::parse(const char* data, size_t size)
 {
     _buffer.append(data, size);
 
@@ -16,19 +21,19 @@ void Request:parse(const char* data, size_t size)
     }
 }
 
-bool Request:parseRequestLine()
+bool Request::parseRequestLine()
 {
     //_buffer is varible that store whole request content it comes as segment
 
     // any line ended by /r/n
-    size_t pos = _buffer.find("/r/n");
+    size_t pos = _buffer.find("\r\n");
     if (pos == std::string::npos)
         return false;
 
     //extract line from _buffer
     std::string line = _buffer.substr(0,pos);
     // remove line from _buffer, because next time should be work with next line
-    _buffer_erase(0, pos + 2);
+    _buffer.erase(0, pos + 2);
 
 
     /* split firsat line
@@ -41,7 +46,7 @@ bool Request:parseRequestLine()
             _state = ERROR
     */
     
-    std::istringstram parse(line);
+    std::istringstream iss(line);
     std::string methodStr;
     if (!(iss >> methodStr >> _path >> _version)) {
         _state = ERROR;
@@ -63,15 +68,15 @@ bool Request:parseRequestLine()
     return true;
 }
 
-bool Request:parseHeaders()
+bool Request::parseHeaders()
 {
     while (true)
     {
-        size_t pos = _buffer.find("/r/n");
+        size_t pos = _buffer.find("\r\n");
         if (pos == std::string::npos)
             return false;
         std::string line = _buffer.substr(0,pos);
-        _buffer_erase(0, pos + 2);
+        _buffer.erase(0, pos + 2);
 
         //If line is empty -> headers finished
         if (line.empty())
@@ -90,7 +95,7 @@ bool Request:parseHeaders()
 
         */
         size_t colon = line.find(':');
-        if (pos == std::string::npos)
+        if (colon == std::string::npos)
         {
             _state = ERROR;
             return false;
@@ -105,22 +110,22 @@ bool Request:parseHeaders()
     }
 }
 
-bool Request:parseBody()
+bool Request::parseBody()
 {
-    size_t contentLenght = std::stoi(_headers["Content-Length"]); // convert value of Content-Length from str to int
+    size_t contentLenght = std::atoi(_headers["Content-Length"].c_str()); // convert value of Content-Length from str to int
     if (_buffer.size() < contentLenght) // wait for  _buffer finish all bvbody content bytes we need base on Content-Length
         return false;
     // store all content from 0 to Content-Length in _body
-    _body.insert(_buffer.end(), _buffer.begin(), _buffer.begin() + contentLenght);
+    _body.insert(_body.end(), _buffer.begin(), _buffer.begin() + contentLenght);
     //remove body copntent from _buffer
-    _body.erase(0, contentLenght);
+    _buffer.erase(0, contentLenght);
     //update satate
     _state = FINISHED;
 
     return true;
 }
 
-bool request::isFinished()
+bool Request::isFinished()
 {
     return _state == FINISHED;
 }
