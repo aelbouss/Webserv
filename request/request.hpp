@@ -12,7 +12,17 @@ class Request
 {
     public:
         enum Method { GET, POST, DELETE, UNKNOWN };
-        enum State { REQUEST_LINE, HEADERS, BODY, FINISHED, ERROR };
+        enum State
+        {
+            REQUEST_LINE,
+            HEADERS,
+            BODY,
+            // BODY_CONTENT_LENGTH,
+            CHUNK_SIZE,          // Looking for the hex number (e.g., "7\r\n")
+            CHUNK_DATA,         // Reading the actual chunk data
+            FINISHED,
+            ERROR
+        };
 
         Request();
         void parse(const char* data, size_t size);
@@ -30,8 +40,11 @@ class Request
         std::vector<char> _body;
         State       _state;
         std::string _buffer;
+        size_t      _chunkSize;
 
         bool parseRequestLine();
+        bool parseChunkData();
+        bool parseChunkSize();
         bool parseHeaders();
         bool parseBody();
 };
