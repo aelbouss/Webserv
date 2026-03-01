@@ -16,6 +16,8 @@ void Request::parse(const char* data, size_t size)
     {
         if (_state == REQUEST_LINE && !parseRequestLine()) return;
         if (_state == HEADERS && !parseHeaders()) return;
+        if (_state == CHUNK_SIZE && !parseChunkSize()) return;
+        if (_state == CHUNK_DATA && !parseChunkData()) return;
         if (_state == BODY && !parseBody()) return;
         if (_state == FINISHED || _state == ERROR) return;
     }
@@ -81,8 +83,11 @@ bool Request::parseHeaders()
         //If line is empty -> headers finished
         if (line.empty())
         {
+            // 1. Check for Chunked Encoding FIRST
+            if (_headers.count("Transfer-Encoding") && _headers["Transfer-Encoding"].find("chunked") != std::string::npos)
+                _state = CHUNK_SIZE; 
             // if there is content lenght that's mean we have a body else finish baecause no body
-            if (_headers.count("Content-Length"))
+            else if (_headers.count("Content-Length"))
                 _state = BODY;
             else
                 _state = FINISHED;
@@ -108,6 +113,48 @@ bool Request::parseHeaders()
         //store 
         _headers[key] = value;
     }
+}
+
+bool Request::parseChunkSize()
+{
+    size_t pos = _buffer.find("\r\n");
+    if (pos == std::string::npos)
+        return false;
+
+    std::string sizeStr = _buffer.substr(0, pos);
+    _buffer.erase(0, pos + 2);
+
+    std::stringstream ss;
+    ss << std::hex << sizeStr;
+    ss >> _chunkSize;
+
+    if (ss.fail())
+    {
+        _state = ERROR;
+        return false;
+    }
+
+    if (_chunkSize == 0)
+    {
+        _state = FINISHED;
+        return true;
+    }
+
+    _state = CHUNK_DATA;
+    return true;
+}
+
+
+bool Request::parseChunkData()
+{
+    if (_buffer.size() < _chunkSize + 2)
+        return false;
+
+    _body.insert(_body.end(), _buffer.begin(), _buffer.begin() + _chunkSize);
+    _buffer.erase(0, _chunkSize + 2);
+
+    _state = CHUNK_SIZE;
+    return true;
 }
 
 bool Request::parseBody()
