@@ -10,6 +10,7 @@ class CgiHandler{
         int         _exit_status;
         char**     _ch_env;
         char**     _argv;
+        std::map<std::string, std::string> _env;
     public:
         CgiHandler();
         CgiHandler(std::string path);
