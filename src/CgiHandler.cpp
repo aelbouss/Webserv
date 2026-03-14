@@ -32,3 +32,30 @@ CgiHandler::~CgiHandler() {
     }
     this->_env.clear();
 }
+
+
+// Getters
+pid_t CgiHandler::getCgiPid() const {
+    return this->_cgi_pid;
+}
+
+int CgiHandler::getExitStatus() const {
+    return this->_exit_status;
+}
+
+std::string CgiHandler::getCgiPath() const {
+    return this->_cgi_path;
+}
+
+// Setters
+void CgiHandler::setCgiPid(pid_t pid) {
+    this->_cgi_pid = pid;
+}
+
+void CgiHandler::setExitStatus(int status) {
+    this->_exit_status = status;
+}
+
+void CgiHandler::setCgiPath(std::string path) {
+    this->_cgi_path = path;
+}

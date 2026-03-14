@@ -1,6 +1,9 @@
 #pragma once 
 
 #include <string>
+#include <iostream>
+#include <map>
+
 
 class CgiHandler{
 
@@ -15,4 +18,17 @@ class CgiHandler{
         CgiHandler();
         CgiHandler(std::string path);
         ~CgiHandler();
+
+        // Getters
+        pid_t getCgiPid() const;
+        int getExitStatus() const;
+        std::string getCgiPath() const;
+
+
+
+        // Setters
+        void setCgiPid(pid_t pid);
+        void setExitStatus(int status);
+        void setCgiPath(std::string path);
+        void setEnv(std::map<std::string, std::string> env);
 };
