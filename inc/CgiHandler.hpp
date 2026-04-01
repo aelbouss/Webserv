@@ -1,10 +1,14 @@
 #pragma once 
 
+
+#include "Location.hpp"
 #include <string>
 #include <iostream>
 #include <map>
-
-
+#include <sys/stat.h>
+#include <unistd.h>
+#include <fstream>
+#include <sstream>
 class CgiHandler{
 
     private:
@@ -20,15 +24,33 @@ class CgiHandler{
         ~CgiHandler();
 
         // Getters
-        pid_t getCgiPid() const;
-        int getExitStatus() const;
-        std::string getCgiPath() const;
+        // pid_t getCgiPid() const;
+        // int getExitStatus() const;
+        // std::string getCgiPath() const;
+
+        void initEnv(HttpRequest& req , const std::vector<Location>::iterator it_loc);
+
+        // // Setters
+        // void setCgiPid(pid_t pid);
+        // void setExitStatus(int status);
+        // void setCgiPath(std::string path);
 
 
 
-        // Setters
-        void setCgiPid(pid_t pid);
-        void setExitStatus(int status);
-        void setCgiPath(std::string path);
+
+
+
+
+
+
+
+
+
+
+
+
         void setEnv(std::map<std::string, std::string> env);
+        int findStart(const std::string path, const std::string delimiter); 
+        std::string getPathInfo(std::string& path , std::vector<std::string> ext);
+
 };

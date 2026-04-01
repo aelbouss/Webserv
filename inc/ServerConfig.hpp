@@ -33,4 +33,21 @@ class ServerConfig
 		ServerConfig &operator=(const ServerConfig & rhs);
 
 		void initErrorPages(void);
+        void checkToken(std::string& paramt);
+
+
+
+        //Setter
+        void    setServerName(std::string server_name);
+		void	setHost(std::string host);
+
+
+
+
+
+
+
+		
+		bool ServerConfig::isValidHost(std::string host) const
+
 };

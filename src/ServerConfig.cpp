@@ -2,7 +2,7 @@
 
 ServerConfig::ServerConfig()
 {
-	this->_port =x 0;
+	this->_port =0;
 	this->_host = 0;
 	this->_server_name = "";
 	this->_root = "";
@@ -75,4 +75,56 @@ void ServerConfig::initErrorPages()
     _error_pages[503] = "";
     _error_pages[504] = "";
     _error_pages[505] = "";
+}
+
+void	ServerConfig::setServerName(std::string server_name) {
+	checkToken(server_name);
+	this->_server_name = server_name;
+}
+
+void ServerConfig::setHost(std::string parametr)
+{
+	checkToken(parametr);
+	if (parametr == "localhost")
+		parametr = "127.0.0.1";
+	if (!isValidHost(parametr))
+		throw ErrorException("Wrong syntax: host");
+	this->_host = inet_addr(parametr.data());
+}
+
+void ServerConfig::setRoot(std::string root)
+{
+	checkToken(root);
+	if (ConfigFile::getTypePath(root) == 2)
+	{
+		this->_root = root;
+		return ;
+	}
+	char dir[1024];
+	getcwd(dir, 1024);
+	std::string full_root = dir + root;
+	if (ConfigFile::getTypePath(full_root) != 2)
+		throw ErrorException("Wrong syntax: root");
+	this->_root = full_root;
+}
+
+bool ServerConfig::isValidHost(std::string host) const
+{
+    struct sockaddr_in addr;
+    int res = inet_pton(AF_INET, host.c_str(), &addr.sin_addr);
+
+    return (res == 1);
+}
+
+void ServerConfig::checkToken(std::string& paramt)
+{
+	size_t first , last;
+	last = paramt.rfind(';');
+	first = paramt.find(';');
+
+	if(first == std::string::npos || first != last)
+		throw ErrorException("Invalid token: multiple or missing ';'");
+	if(last != paramt.size() - 1)
+		throw ErrorException("Invalid token: ';' must be at the end");
+	paramt.erase(pos);
 }
