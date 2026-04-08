@@ -14,17 +14,16 @@ int	main(void)
 	resources.push_back(server3);
 
 
+	webserv.set_resources(resources); // extract resources from config file
+	//webserv.show_resources();
+	webserv.create_sockets(); // sockest created successfully .
+	webserv.bind_sockets(); // bind sockets with infos
+	webserv.activate_sockets();
+	
+	// current  step : apply listen to  all the open sockets 
 
-	 // 1 extract resources 
-	 // 2 create sockets 
-	 // 3 bind infos to sockets 
-
-	webserv.set_resources(resources);
-	webserv.create_sockets();
-	webserv.assigns_infos_to_sockets();
-
-
-
-
+	// the  steps :
+	// listen in ports , accept , handle non blocking fcntl , accept  the  clients .
+	
 	return (0);
 }

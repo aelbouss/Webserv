@@ -3,14 +3,9 @@
 
 server_infra::server_infra() {}
 
-
 server_infra::~server_infra() {}
 
-void	server_infra::set_resources(vector<engine_resource> & vect)
-{
-	for (size_t i = 0 ; i < vect.size() ; i++)
-		resources[i] = vect[i];
-}
+void	server_infra::set_resources(std::vector<engine_resource> & vect){ resources = vect; }
 
 /*
  * this function will create sockets the endppoints communication of the server
@@ -18,28 +13,83 @@ void	server_infra::set_resources(vector<engine_resource> & vect)
 
 void	server_infra::create_sockets()
 {
+	int	opt;
 	for (size_t i = 0 ; i  < resources.size() ; i++)
 	{
-		sockets[i] = socket(AF_INET, SOCK_STREAM, 0);
+		sockets.push_back(socket(AF_INET, SOCK_STREAM, 0));
 		if (sockets[i] == -1)
 		{
 			std::cout << "socket creation failed "<< std::endl;
-			return (-1);
+			return ;
 		}
 	}
+	// prevent the port hanging in the sockets .  
+	opt = 1;
+	for (size_t i = 0 ; i <  sockets.size() ; i++)
+	{
+		if ( setsockopt(sockets[i], SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+		{
+			//perror("setsockopt failed");
+			std::cerr << "setsockopt failed" << std::endl;
+        	exit(1);
+		}
+	}
+	std::cout << "the sockets are created " << std::endl;
 }
+
 
 /*
  * the bellow function is used to assign sockets with the infos retrived from config file 
  */
 
-void	server_infra::assigns_infos_to_sockets()
+void	server_infra::bind_sockets()
 {
+	// the vector of infos of sockets is  not created yet
+	sockaddr_in	infos;
+
 	for(size_t i = 0 ; i < resources.size() ; i++)
 	{
-		memset(&sockets_infos[i], 0, sizeof(sockets_infos[i]));
-		sockets_infos[i].sin_family = AF_INET;
-		sockets_infos[i].sin_port = htons(resources[i].port) ; // need getter 
-		sockets_infos[i].sin_addr.s_addr = inet_addr(resources[i].interface) // need getter
+		memset(&infos, 0, sizeof(infos));
+		infos.sin_family = AF_INET;
+		infos.sin_port = htons(resources[i].get_port()) ; 
+		const char	*str  = resources[i].get_interface().c_str();
+		infos.sin_addr.s_addr = inet_addr(str); // check with the config file to handle (* or 0.0.0.0)
+		sockets_infos.push_back(infos);
 	}
+
+	for (size_t i = 0 ; i < sockets.size() ; i++)
+	{
+		if (bind(sockets[i], (struct sockaddr *)&sockets_infos[i], sizeof(sockets_infos[i])) < 0)
+		{
+			std::cout << "faild to bind socket with infos" << std::endl;
+			exit(EXIT_FAILURE);
+		}
+	}
+	std::cout << "the sockets are binded" << std::endl;
+}
+
+
+
+void	server_infra::show_resources()
+{
+	for (size_t i = 0 ; i < resources.size() ; i++)
+	{
+		std::cout << resources[i].get_interface()  << std::endl;
+		std::cout << resources[i].get_port() << std::endl;
+		std::cout << resources[i].get_size_body()  << std::endl;
+		std::cout << " ========================= " << std::endl;
+	}
+}
+
+void	server_infra::activate_sockets()
+{
+	for (size_t i = 0 ; i < sockets.size(); i++)
+	{
+		if (listen(sockets[i], SOMAXCONN) < 0)
+		{
+			std::cerr << "listen syscall error" << std::endl;
+			exit(1);
+		}
+	}
+	std::cout << "the sockets are ready to accept connections" << std::endl;
 }

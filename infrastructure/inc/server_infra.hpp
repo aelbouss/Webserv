@@ -6,9 +6,12 @@
 # include <vector>
 # include <sys/socket.h>
 # include <netinet/in.h>
+# include <vector>
+# include <cstring>
+# include <arpa/inet.h>
+# include <cstdlib>
 
-# include "multi_listener_configuration.hpp"
-
+# include "multi_listener_setup.hpp"
 
 // the class of the infrastructure for the server
 
@@ -16,7 +19,7 @@ class server_infra
 {
 	private:
 			
-			std::vector <engine_resource> resources; // the pair of interface and port for every server block 
+			std::vector <engine_resource> resources; // the pair of interface and port for & max body size every server block 
 			std::vector <int> sockets ;  // hold all the lestensing master sockets .
 			std::vector <sockaddr_in> sockets_infos; // a vector of  the informations must be bind to each socket
 	public:
@@ -24,8 +27,10 @@ class server_infra
 		~server_infra();
 		server_infra(const server_infra& src);
 		server_infra&	operator = (server_infra& src);
-		void	set_resources(vector<engine_resource> & vect);
+		void	set_resources(std::vector<engine_resource> & vect);
 		void	create_sockets();
-		void	assigns_infos_to_sockets();
+		void	bind_sockets();
+		void	show_resources();
+		void	activate_sockets();
 };
 # endif
