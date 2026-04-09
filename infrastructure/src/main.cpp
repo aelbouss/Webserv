@@ -13,23 +13,20 @@ int	main(void)
 	resources.push_back(server2);
 	resources.push_back(server3);
 
-
-	webserv.set_resources(resources); // extract resources from config file
-	//webserv.show_resources();
-	webserv.create_sockets(); // sockest created successfully .
-	webserv.bind_sockets(); // bind sockets with infos
-	webserv.activate_sockets();
+	try
+	{
+		webserv.set_resources(resources); // extract resources from config file
+		//webserv.show_resources();
+		webserv.create_sockets(); // sockest created successfully .
+		webserv.bind_sockets(); // bind sockets with infos
+		webserv.activate_sockets();
+	}
 	
-	// current  step : apply listen to  all the open sockets 
-
-	// the  steps :
-	// listen in ports , accept , handle non blocking fcntl , accept  the  clients .
-	
+	catch(const std::exception& e)
+	{
+		std::cerr << e.what() << '\n';
+	}
 	return (0);
 }
 
-
-// tasks  of  next day :
-
-/*allowd  the  nonblocking  state  of  the  sockets 
-accept  clients . */
+// must set also set the clients  sockets with the non blocking

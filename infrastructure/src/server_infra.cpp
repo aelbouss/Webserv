@@ -18,26 +18,24 @@ void	server_infra::create_sockets()
 	{
 		sockets.push_back(socket(AF_INET, SOCK_STREAM, 0));
 		if (sockets[i] == -1)
-		{
-			std::cout << "socket creation failed "<< std::endl;
-			return ;
-		}
+			throw SocketExceptions("failed to create socket");
 	}
 	// prevent the port hanging in the sockets .  
 	opt = 1;
 	for (size_t i = 0 ; i <  sockets.size() ; i++)
 	{
 		if ( setsockopt(sockets[i], SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
-		{
-			//perror("setsockopt failed");
-			std::cerr << "setsockopt failed" << std::endl;
-        	exit(1);
-		}
+			throw SocketExceptions("setsockopt failed");
 		// set sockets  with non blocking 
 		set_non_blocking(sockets[i]);
 	}
 	std::cout << "the sockets are created " << std::endl;
 }
+
+
+/*
+ * the routine below will turn on the non blocking state of sockets  
+ */
 
 void	server_infra::set_non_blocking(int fd)
 {
@@ -45,19 +43,10 @@ void	server_infra::set_non_blocking(int fd)
 
 	flags = fcntl(fd, F_GETFL, 0);
 	if (flags < 0)
-	{
-		// error 
-		std::cerr << "fnctl error" << std::endl;
-		exit(1);
-	}
+		throw SocketExceptions("failed to get socket flags");
 	if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)
-	{
-		// must handle  errors  here 
-		std::cerr << "fnctl error" << std::endl;
-		exit(1);
-	}
+		throw SocketExceptions("failed to set O_NONBLOCK");
 }
-
 
 /*
  * the bellow function is used to assign sockets with the infos retrived from config file 
@@ -81,10 +70,7 @@ void	server_infra::bind_sockets()
 	for (size_t i = 0 ; i < sockets.size() ; i++)
 	{
 		if (bind(sockets[i], (struct sockaddr *)&sockets_infos[i], sizeof(sockets_infos[i])) < 0)
-		{
-			std::cout << "faild to bind socket with infos" << std::endl;
-			exit(EXIT_FAILURE);
-		}
+			throw SocketExceptions("failed to bind sockets");
 	}
 	std::cout << "the sockets are binded" << std::endl;
 }
@@ -111,10 +97,21 @@ void	server_infra::activate_sockets()
 	for (size_t i = 0 ; i < sockets.size(); i++)
 	{
 		if (listen(sockets[i], SOMAXCONN) < 0)
-		{
-			std::cerr << "listen syscall error" << std::endl;
-			exit(1);
-		}
+			throw SocketExceptions("failed to listen sockets");
 	}
 	std::cout << "the sockets are ready to accept connections" << std::endl;
 }
+
+// the socket exceptions utilities :
+
+SocketExceptions::SocketExceptions(const std::string& Msg)
+{
+	msg = Msg + " : "  + std::string(strerror(errno));
+}
+
+const char * SocketExceptions::what() const throw()
+{
+	return (msg.c_str()) ;
+}
+
+SocketExceptions::~SocketExceptions()  throw() {}

@@ -11,10 +11,25 @@
 # include <arpa/inet.h>
 # include <cstdlib>
 # include <fcntl.h>
+# include <exception>
+# include "errno.h"
 
 # include "multi_listener_setup.hpp"
 
 // the class of the infrastructure for the server
+
+
+class	SocketExceptions :public std::exception
+{
+	private:
+		std::string	msg;
+
+	public:
+
+		SocketExceptions(const std::string& Msg);
+		virtual  ~SocketExceptions() throw() ;
+		virtual	const char * what() const throw() ;
+};
 
 class server_infra
 {
