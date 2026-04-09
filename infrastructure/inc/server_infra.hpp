@@ -10,6 +10,7 @@
 # include <cstring>
 # include <arpa/inet.h>
 # include <cstdlib>
+# include <fcntl.h>
 
 # include "multi_listener_setup.hpp"
 
@@ -29,6 +30,7 @@ class server_infra
 		server_infra&	operator = (server_infra& src);
 		void	set_resources(std::vector<engine_resource> & vect);
 		void	create_sockets();
+		void	set_non_blocking(int fd);
 		void	bind_sockets();
 		void	show_resources();
 		void	activate_sockets();

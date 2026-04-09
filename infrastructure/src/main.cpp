@@ -27,3 +27,9 @@ int	main(void)
 	
 	return (0);
 }
+
+
+// tasks  of  next day :
+
+/*allowd  the  nonblocking  state  of  the  sockets 
+accept  clients . */

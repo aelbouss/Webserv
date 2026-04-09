@@ -33,8 +33,29 @@ void	server_infra::create_sockets()
 			std::cerr << "setsockopt failed" << std::endl;
         	exit(1);
 		}
+		// set sockets  with non blocking 
+		set_non_blocking(sockets[i]);
 	}
 	std::cout << "the sockets are created " << std::endl;
+}
+
+void	server_infra::set_non_blocking(int fd)
+{
+	int	flags;
+
+	flags = fcntl(fd, F_GETFL, 0);
+	if (flags < 0)
+	{
+		// error 
+		std::cerr << "fnctl error" << std::endl;
+		exit(1);
+	}
+	if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)
+	{
+		// must handle  errors  here 
+		std::cerr << "fnctl error" << std::endl;
+		exit(1);
+	}
 }
 
 
@@ -80,6 +101,10 @@ void	server_infra::show_resources()
 		std::cout << " ========================= " << std::endl;
 	}
 }
+
+/*
+ * the routine bellow puts the socket in the passive mode
+ */
 
 void	server_infra::activate_sockets()
 {
