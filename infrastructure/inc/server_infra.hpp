@@ -13,8 +13,10 @@
 # include <fcntl.h>
 # include <exception>
 # include "errno.h"
+# include <poll.h>
 
 # include "multi_listener_setup.hpp"
+# include "multiplexing.hpp"
 
 // the class of the infrastructure for the server
 
@@ -49,5 +51,8 @@ class server_infra
 		void	bind_sockets();
 		void	show_resources();
 		void	activate_sockets();
+		void	close_sockets();
+		size_t	sockest_size();
+		const 	std::vector<int>& get_sockets() const ;
 };
 # endif

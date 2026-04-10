@@ -1,8 +1,11 @@
 # include "../inc/server_infra.hpp"
+# include "../inc/multiplexing.hpp"
 
 int	main(void)
 {
 	server_infra	webserv;
+	multiplexing	cluster;
+	
 
 	engine_resource	server1("127.0.0.1", 8080, 100);
 	engine_resource	server2("127.0.0.1", 8081, 101);
@@ -15,17 +18,29 @@ int	main(void)
 
 	try
 	{
+		// infra part
 		webserv.set_resources(resources); // extract resources from config file
 		//webserv.show_resources();
 		webserv.create_sockets(); // sockest created successfully .
 		webserv.bind_sockets(); // bind sockets with infos
 		webserv.activate_sockets();
-	}
+		webserv.close_sockets(); // close  sockets functions 
+
+		// multiplexing part 
+		cluster.set_master_sockets(webserv);
+		cluster.prepare_master_sockets();
 	
+		while (true)
+		{
+			
+		}
+	}
+
 	catch(const std::exception& e)
 	{
-		std::cerr << e.what() << '\n';
+		std::cerr << e.what() << std::endl ;
 	}
+
 	return (0);
 }
 

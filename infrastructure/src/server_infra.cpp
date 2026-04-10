@@ -18,14 +18,20 @@ void	server_infra::create_sockets()
 	{
 		sockets.push_back(socket(AF_INET, SOCK_STREAM, 0));
 		if (sockets[i] == -1)
+		{
+			close_sockets();
 			throw SocketExceptions("failed to create socket");
+		}
 	}
 	// prevent the port hanging in the sockets .  
 	opt = 1;
 	for (size_t i = 0 ; i <  sockets.size() ; i++)
 	{
-		if ( setsockopt(sockets[i], SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+		if (setsockopt(sockets[i], SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
+		{
+			close_sockets();
 			throw SocketExceptions("setsockopt failed");
+		}
 		// set sockets  with non blocking 
 		set_non_blocking(sockets[i]);
 	}
@@ -70,7 +76,10 @@ void	server_infra::bind_sockets()
 	for (size_t i = 0 ; i < sockets.size() ; i++)
 	{
 		if (bind(sockets[i], (struct sockaddr *)&sockets_infos[i], sizeof(sockets_infos[i])) < 0)
+		{
+			close_sockets();
 			throw SocketExceptions("failed to bind sockets");
+		}
 	}
 	std::cout << "the sockets are binded" << std::endl;
 }
@@ -97,9 +106,29 @@ void	server_infra::activate_sockets()
 	for (size_t i = 0 ; i < sockets.size(); i++)
 	{
 		if (listen(sockets[i], SOMAXCONN) < 0)
+		{
+			close_sockets();
 			throw SocketExceptions("failed to listen sockets");
+		}
 	}
 	std::cout << "the sockets are ready to accept connections" << std::endl;
+}
+
+/*
+ *  the routine below closes the opened sockets .  
+ */
+
+void	server_infra::close_sockets()
+{
+	for (size_t i = 0 ; i < sockets.size() ; i++)
+		close(sockets[i]);
+}
+
+size_t	server_infra::sockest_size(){ return (sockets.size()); }
+
+const 	std::vector<int>& server_infra::get_sockets() const 
+{
+	return (sockets) ;
 }
 
 // the socket exceptions utilities :
@@ -113,5 +142,9 @@ const char * SocketExceptions::what() const throw()
 {
 	return (msg.c_str()) ;
 }
+
+
+
+
 
 SocketExceptions::~SocketExceptions()  throw() {}

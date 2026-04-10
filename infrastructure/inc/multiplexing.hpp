@@ -1,0 +1,40 @@
+# ifndef MULTIPLEXING_HPP
+# define MULTIPLEXING_HPP
+
+# include "server_infra.hpp"
+
+// class	multiplexing_exception : public std::exception
+// {
+// 	private:
+// 		std::string	msg;
+
+// 	public:
+
+// 		virtual	const char * what() const throw() ;
+// };
+
+class	server_infra;
+
+class	multiplexing
+{
+	private :
+		std::vector <struct pollfd> fds_list;
+		std::vector <int> master_sockets ; // to just distinguish master vs client sockets .
+	public :
+		multiplexing();
+		multiplexing&	operator = (const multiplexing& src);
+		multiplexing( const multiplexing& src);
+		~multiplexing();
+		void	set_master_sockets(server_infra& infos);
+		void	add_new_client(int fd);
+		void	remove_client(int fd);
+		void	take_master_sockets_snapshot(server_infra& infos);
+		void	prepare_master_sockets();
+		
+		void	cluster_controlling();	
+		int	is_master_socket(int fd);
+
+
+};
+
+# endif
