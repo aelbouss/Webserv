@@ -2,7 +2,7 @@
 
 
 //#include "Webserv.hpp"
-#include "CgiHandler.hpp"
+// #include "CgiHandler.hpp"
 #include "ServerConfig.hpp"
 #include "ConfigFile.hpp"
 class Location

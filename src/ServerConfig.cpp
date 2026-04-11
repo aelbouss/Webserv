@@ -1,4 +1,5 @@
 #include "../inc/ServerConfig.hpp"
+#include "../inc/Location.hpp"
 #include <cstdlib>
 
 ServerConfig::ServerConfig()
@@ -470,10 +471,6 @@ bool ServerConfig::isValidErrorPages()
 }
 
 // Accessors
-const std::string &ServerConfig::getRoot(){
-	return(this->_root);
-}
-
 const std::string &ServerConfig::getServerName()
 {
 	return (this->_server_name);

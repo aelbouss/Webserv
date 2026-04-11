@@ -1,9 +1,3 @@
-/*
-** Server-level configuration model and validation helpers.
-**
-** This class owns normalized server directives parsed from config files,
-** validates tokens and paths, and builds per-location runtime settings.
-*/
 
 #pragma once 
 
@@ -11,6 +5,13 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <string>
+#include <iostream>
+#include <map>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <fstream>
+#include <sstream>
 #include "ConfigFile.hpp"
 #include "ConfigParser.hpp"
 //#include "LocationConfig.hpp"
@@ -42,7 +43,6 @@ class ServerConfig
 		ServerConfig &operator=(const ServerConfig & rhs);
 
 		void initErrorPages(void);
-        void checkToken(std::string& paramt);
 
 
 
@@ -75,7 +75,7 @@ class ServerConfig
 		
 		void	setupServer(void);
 		bool checkLocaitons() const;
-		void checkToken(std::string &parametr);
+		void checkToken(std::string &paramt);
 
 
 

@@ -1,4 +1,5 @@
 #include "../inc/ConfigParser.hpp"
+#include "../inc/Location.hpp"
 
 ConfigParser::ConfigParser()
 {
