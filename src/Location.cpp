@@ -1,4 +1,5 @@
 #include "../inc/Location.hpp"
+#include <cstdlib>
 
 Location::Location()
 {
@@ -127,15 +128,17 @@ void Location::setCgiExtension(std::vector<std::string> extension)
 void Location::setMaxBodySize(std::string paramet)
 {
 	unsigned long body_size = 0;
+	char *end_ptr;
 
 	for (size_t i = 0; i < paramet.length(); i++)
 	{
 		if (paramet[i] < '0' || paramet[i] > '9')
 			throw ServerConfig::ErrorException("Wrong syntax: client_max_body_size");
 	}
-	if (!std::stoi(paramet))
+	end_ptr = NULL;
+	body_size = std::strtoul(paramet.c_str(), &end_ptr, 10);
+	if (*end_ptr != '\0' || body_size == 0)
 		throw ServerConfig::ErrorException("Wrong syntax: client_max_body_size");
-	body_size = std::stoi(paramet);
 	this->_client_max_body_size = body_size;
 }
 
@@ -200,7 +203,7 @@ const unsigned long &Location::getMaxBodySize() const
 	return (this->_client_max_body_size);
 }
 
-/* for printing allowed methods*/
+/* Build a comma-separated method list for debug and config diagnostics. */
 std::string Location::getPrintMethods() const
 {
     std::string res;
@@ -217,3 +220,5 @@ std::string Location::getPrintMethods() const
     }
     return res;
 }
+
+

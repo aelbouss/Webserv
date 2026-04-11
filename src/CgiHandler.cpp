@@ -78,7 +78,8 @@ void CgiHandler::initEnv(HttpRequest& req, const std::vector<Location>::iterator
     this->_env["GATEWAY_INTERFACE"] = "CGI/1.1";
     pos = findStart(this->_cgi_path , "cgi-bin/");
     this->_env["SCRIPT_NAME"] = this->_cgi_path;
-    this->_env["SCRIPT_FILENAME"] = ((pos < 0 || (size_t)(pos + 8) > this->_cgi_path.size()) ? "" : this->_cgi_path.substr(pos + 8, this->_cgi_path.size())); // check dif cases after put right parametr from the response
+    // Derive script filename relative to cgi-bin/ while guarding index boundaries.
+    this->_env["SCRIPT_FILENAME"] = ((pos < 0 || (size_t)(pos + 8) > this->_cgi_path.size()) ? "" : this->_cgi_path.substr(pos + 8, this->_cgi_path.size()));
     this->_env["PATH_INFO"] = getPathInfo(req.getPath(), it_loc->getCgiExtension());
     this->_env["PATH_TRANSLATED"] = it_loc->getRootLocation() + (this->_env["PATH_INFO"] == "" ? "/" : this->_env["PATH_INFO"]);
     this->_env["QUERY_STRING"] = decode(req.getQuery());
