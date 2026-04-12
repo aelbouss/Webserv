@@ -1,5 +1,15 @@
 #include "../inc/ServerConfig.hpp"
 
+
+unsigned int    fromHexToDec(const std::string &n)
+{
+    unsigned int r;
+    std::stringstream aa;
+    aa << n;
+    aa >> std::hex >> r;
+    return r;
+}
+
 std::string statusCodeString(short statusCode)
 {
     switch (statusCode)

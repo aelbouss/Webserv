@@ -1,9 +1,8 @@
 #pragma once
 
-#include <exception>
-#include <string>
-#include <vector>
-#include "ServerConfig.hpp"
+
+#include "WebServer.hpp"
+
 
 class ServerConfig;
 

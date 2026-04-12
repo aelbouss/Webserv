@@ -1,14 +1,21 @@
 #include "../inc/ServerConfig.hpp"
 
+
+void sigpipeHandle(int sig) { if(sig) {}}
+
 int main(int argc, char **argv)
 {
+
     try
     {
         std::string config;
         ConfigParser cluster;
+        signal(SIGPIPE, sigpipeHandle);
 
         if (argc == 2)
             config = argv[1];
+        
+        
         else if (argc == 1)
         {
             config = "configs/default.conf";

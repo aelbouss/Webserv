@@ -1,10 +1,7 @@
 #pragma once
+#include "WebServer.hpp"
 
 
-//#include "Webserv.hpp"
-// #include "CgiHandler.hpp"
-#include "ServerConfig.hpp"
-#include "ConfigFile.hpp"
 class Location
 {
 	private:

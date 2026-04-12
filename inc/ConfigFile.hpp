@@ -1,8 +1,6 @@
 #pragma once
 
-#include "ServerConfig.hpp"
-//#include "Webserv.hpp"
-// #include "CgiHandler.hpp"
+#include "WebServer.hpp"
 
 class ConfigFile {
 	private:

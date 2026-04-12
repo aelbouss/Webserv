@@ -1,21 +1,8 @@
 
 #pragma once 
 
-#include <arpa/inet.h>
-#include <string>
-#include <vector>
-#include <map>
-#include <string>
-#include <iostream>
-#include <map>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <fstream>
-#include <sstream>
-#include "ConfigFile.hpp"
-#include "ConfigParser.hpp"
-//#include "LocationConfig.hpp"
-//#include "Location.hpp"
+#include "WebServer.hpp"
+
 
 #define MAX_CONTENT_LENGTH (1024 * 1024)  // 1MB default
 class Location;
@@ -103,6 +90,3 @@ class ServerConfig
 		};
 
 };
-
-		//Utils
-		std::string statusCodeString(short statusCode);
