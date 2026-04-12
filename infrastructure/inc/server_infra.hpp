@@ -14,6 +14,7 @@
 # include <exception>
 # include "errno.h"
 # include <poll.h>
+# include <map>
 
 # include "multi_listener_setup.hpp"
 # include "multiplexing.hpp"

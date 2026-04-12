@@ -24,16 +24,13 @@ int	main(void)
 		webserv.create_sockets(); // sockest created successfully .
 		webserv.bind_sockets(); // bind sockets with infos
 		webserv.activate_sockets();
-		webserv.close_sockets(); // close  sockets functions 
+		//webserv.close_sockets(); // close  sockets functions 
 
+		
 		// multiplexing part 
 		cluster.set_master_sockets(webserv);
 		cluster.prepare_master_sockets();
-	
-		while (true)
-		{
-			
-		}
+		cluster.cluster_controlling();
 	}
 
 	catch(const std::exception& e)

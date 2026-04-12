@@ -2,6 +2,8 @@
 # define MULTIPLEXING_HPP
 
 # include "server_infra.hpp"
+# include "client.hpp"
+
 
 // class	multiplexing_exception : public std::exception
 // {
@@ -14,12 +16,14 @@
 // };
 
 class	server_infra;
+class	client;
 
 class	multiplexing
 {
 	private :
 		std::vector <struct pollfd> fds_list;
-		std::vector <int> master_sockets ; // to just distinguish master vs client sockets .
+		std::vector <int> master_sockets ;
+		std::map <int, client> client_data; // to just distinguish master vs client sockets .
 	public :
 		multiplexing();
 		multiplexing&	operator = (const multiplexing& src);
@@ -33,8 +37,8 @@ class	multiplexing
 		
 		void	cluster_controlling();	
 		int	is_master_socket(int fd);
-
-
+		void existing_client(int fd);
+		void abort_client(int fd);
 };
 
 # endif

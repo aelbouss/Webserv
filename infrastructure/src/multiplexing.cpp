@@ -50,6 +50,7 @@
 			struct	pollfd		client_card;
 			socklen_t	addr_len;
 			int	new_client;
+			client client_room;
 		
 			addr_len = sizeof(client_addr);
 			new_client = accept(fd, (struct sockaddr *)&client_addr, &addr_len);
@@ -58,7 +59,85 @@
 			client_card.events = POLLIN ;
 			client_card.revents = 0;
 			fds_list.push_back(client_card);
+			client_data.insert(std::pair <int ,client>(new_client, client_room));
 		}
+
+
+		void	multiplexing::abort_client(int fd)
+		{
+			std::map<int,client>::iterator it;
+			std::map<int, client>::iterator tmp;
+			
+			// remove  the  client from  the wtched  list
+			for (size_t i = 0 ; i < fds_list.size() ; i++)
+			{
+				if (fds_list[i].fd == fd)
+				{
+					fds_list.erase(fds_list.begin() + i);
+					break;
+				}
+			}
+			// remove the data dat in the room of a client .
+			it = client_data.begin();
+			while (it != client_data.end())
+			{
+			    if (it->first == fd)
+			    {
+			        tmp = it;
+			        ++it;
+			        client_data.erase(tmp);
+			    }
+			    else
+			        ++it;
+			}
+		}
+
+		void	multiplexing::existing_client(int fd)
+		{
+			char buffer[4090];
+			int	rb;
+			std::map<int, client>::iterator client_idx;
+		
+			rb = 1;
+			// std::cout << "here is the entred fd : " << fd << std::endl;
+			std::cout << "before deleting a client fds_list " << client_data.size() << std::endl;
+			std::cout << "before deleting a  client map :" << fds_list.size() << std::endl;
+			memset(buffer, 0, sizeof(buffer));
+			while ((rb = recv(fd, buffer, sizeof(buffer) , 0)) > 0)
+			{
+				client_idx = client_data.find(fd);
+				if (client_idx == client_data.end())
+				{
+					// must make exception here .
+					std::cerr << "invalid client" << std::endl;
+				}
+				client_idx->second.append_request(buffer);
+				std::cout << client_idx->second.get_request() << std::endl;
+				memset(buffer, 0,sizeof(buffer));
+				if (rb <  0)
+				{
+					// error to handle ;
+					close(fd);
+					std::cerr << "error occurs here" << std::endl;
+					break ;
+				}
+			}
+			if (rb == 0)
+			{
+				std::cout << "the client closes the connection" << std::endl;
+				close (fd);
+				abort_client(fd);
+				std::cout << "after deleting a client fds_list " << client_data.size() << std::endl;
+				std::cout << "after deleting a  client map :" << fds_list.size() << std::endl;
+			}
+		}
+
+
+
+
+
+
+
 
 		// void	multiplexing::remove_client(int fd)
 		// {
@@ -80,30 +159,33 @@
 			return (0);
 		}
 
+		/*
+		 * the routine below runs  the server main job 
+		 */
+
 		void	multiplexing::cluster_controlling()
 		{
 			int	activity;
+
+			std::cout << "the server is running ..." << std::endl;
 
 			while (true)
 			{
 				activity = poll(&fds_list[0], fds_list.size() , -1);
 				if (activity < 0 )
 				{
+					std::cerr << "an error ocuured " << std::endl;
+					exit(1);
 					// thrwo exception .
 				}
-
 				for (size_t i = 0 ; i < fds_list.size() ; i++)
 				{
 					if (fds_list[i].revents & POLLIN) // an event occured ;
 					{
 						if (is_master_socket(fds_list[i].fd))
-						{
 							add_new_client(fds_list[i].fd);
-						}
 						else
-						{
-							// handle  an  existing  client .
-						}
+							existing_client(fds_list[i].fd);
 					}
 				}
 
