@@ -16,7 +16,6 @@
 
 		multiplexing::~multiplexing(){}
 
-
 		/*
 		 * setup the master sockets to be ready to accept new connections
 		 * and  push them to the  list to be watched .
@@ -94,14 +93,13 @@
 
 		void	multiplexing::existing_client(int fd)
 		{
-			char buffer[4090];
+			char buffer[8000];
 			int	rb;
+
+			size_t	max_body_size  = 1000000 ; // just hardcoded
 			std::map<int, client>::iterator client_idx;
 		
 			rb = 1;
-			// std::cout << "here is the entred fd : " << fd << std::endl;
-			std::cout << "before deleting a client fds_list " << client_data.size() << std::endl;
-			std::cout << "before deleting a  client map :" << fds_list.size() << std::endl;
 			memset(buffer, 0, sizeof(buffer));
 			while ((rb = recv(fd, buffer, sizeof(buffer) , 0)) > 0)
 			{
@@ -112,7 +110,21 @@
 					std::cerr << "invalid client" << std::endl;
 				}
 				client_idx->second.append_request(buffer);
-				std::cout << client_idx->second.get_request() << std::endl;
+				if (client_idx->second.check_headers_is_finish())
+				{
+					client_idx->second.set_headers_complete();
+					client_idx->second.set_content_length();
+				}
+				if (client_idx->second.get_request_size() > max_body_size)
+				{
+					std::cout << "the client exeeds the max body size" << std::endl;
+					abort_client(fd);
+					// throw an  exception of Error413Exception()
+				}
+				else
+				{
+					std::cout << client_idx->second.get_request() << std::endl;
+				}
 				memset(buffer, 0,sizeof(buffer));
 				if (rb <  0)
 				{
@@ -127,23 +139,8 @@
 				std::cout << "the client closes the connection" << std::endl;
 				close (fd);
 				abort_client(fd);
-				std::cout << "after deleting a client fds_list " << client_data.size() << std::endl;
-				std::cout << "after deleting a  client map :" << fds_list.size() << std::endl;
 			}
 		}
-
-
-
-
-
-
-
-
-		// void	multiplexing::remove_client(int fd)
-		// {
-
-		// }
-
 
 		/*
 		 * this routine below signals if the new event occured is a new connection or existing one

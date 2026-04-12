@@ -18,6 +18,8 @@
 class	server_infra;
 class	client;
 
+# define MAX_BODY_SIZE = 1000;
+
 class	multiplexing
 {
 	private :

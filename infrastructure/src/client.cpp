@@ -40,3 +40,49 @@ void	client::append_request(char *raw_bytes)
 	std::string str(raw_bytes);
 	request_buffer.append(raw_bytes);
 }
+
+size_t	client::get_request_size()
+{
+	return(request_buffer.size());
+}
+
+int client::check_headers_is_finish()
+{
+	size_t	idx;
+
+	idx = request_buffer.find("\r\n\r\n");
+	if (idx != std::string::npos)
+	{
+		set_header_size(idx + 4); // store  the size of  herader + 4 to signal the starting of body 	
+		return (1);
+	}
+	return (0);
+}
+
+void	client::set_content_length()
+{
+	content_length = get_request_size() - get_header_size();
+}
+void	client::set_header_size(size_t nb)
+{
+	header_size = nb;
+}
+void	client::set_headers_complete()
+{
+	content_length = true;
+}
+
+bool	client::get_headers_complete()
+{
+	return (content_length);
+}
+
+
+size_t	client::get_content_length()
+{
+	return (content_length);
+}
+size_t	client::get_header_size()
+{
+	return (header_size);
+}
