@@ -141,7 +141,6 @@ void CgiHandler::initEnvCgi(HttpRequest& req, const std::vector<Location>::itera
 }
 
 
-/* initialization environment variable */
 void CgiHandler::initEnv(HttpRequest& req, const std::vector<Location>::iterator it_loc)
 {
 	int			poz;
@@ -189,7 +188,6 @@ void CgiHandler::initEnv(HttpRequest& req, const std::vector<Location>::iterator
 	this->_argv[2] = NULL;
 }
 
-/* Pipe and execute CGI */
 void CgiHandler::execute(short &error_code)
 {
 	if (this->_argv[0] == NULL || this->_argv[1] == NULL)
@@ -199,14 +197,14 @@ void CgiHandler::execute(short &error_code)
 	}
 	if (pipe(pipe_in) < 0)
 	{
-        Logger::logMsg(RED, CONSOLE_OUTPUT, "pipe() failed");
+        //Logger::logMsg(RED, CONSOLE_OUTPUT, "pipe() failed");
 
 		error_code = 500;
 		return ;
 	}
 	if (pipe(pipe_out) < 0)
 	{
-        Logger::logMsg(RED, CONSOLE_OUTPUT, "pipe() failed");
+        //Logger::logMsg(RED, CONSOLE_OUTPUT, "pipe() failed");
 
 		close(pipe_in[0]);
 		close(pipe_in[1]);
@@ -246,7 +244,6 @@ int CgiHandler::findStart(const std::string path, const std::string delim)
 		return (-1);
 }
 
-/* Translation of parameters for QUERY_STRING environment variable */
 std::string CgiHandler::decode(std::string &path)
 {
 	size_t token = path.find("%");
@@ -261,15 +258,14 @@ std::string CgiHandler::decode(std::string &path)
 	return (path);
 }
 
-/* Isolation PATH_INFO environment variable */
 std::string CgiHandler::getPathInfo(std::string& path, std::vector<std::string> extensions)
 {
 	std::string tmp;
 	size_t start, end;
 
-	for (std::vector<std::string>::iterator it_ext = extensions.begin(); it_ext != extensions.end(); it_ext++)
+	for (std::vector<std::string>::iterator it = extensions.begin(); it != extensions.end(); it++)
 	{
-		start = path.find(*it_ext);
+		start = path.find(*it);
 		if (start != std::string::npos)
 			break ;
 	}
