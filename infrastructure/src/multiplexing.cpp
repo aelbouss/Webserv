@@ -91,6 +91,7 @@
 			}
 		}
 
+
 		void	multiplexing::existing_client(int fd)
 		{
 			char buffer[8000];
@@ -110,11 +111,17 @@
 					std::cerr << "invalid client" << std::endl;
 				}
 				client_idx->second.append_request(buffer);
-				if (client_idx->second.check_headers_is_finish())
+				// check for  header ending "\r\n\r\n"
+				if (!client_idx->second.get_headers_complete())
 				{
-					client_idx->second.set_headers_complete();
-					client_idx->second.set_content_length();
+					if (client_idx->second.check_headers_is_finish())
+					{
+						client_idx->second.set_headers_complete();
+						std::cout << "the header is finished (*)(*)" << std::endl;
+					}
 				}
+					//client_idx->second.set_content_length();
+				
 				if (client_idx->second.get_request_size() > max_body_size)
 				{
 					std::cout << "the client exeeds the max body size" << std::endl;
@@ -141,6 +148,8 @@
 				abort_client(fd);
 			}
 		}
+
+
 
 		/*
 		 * this routine below signals if the new event occured is a new connection or existing one
