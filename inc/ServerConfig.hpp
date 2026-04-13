@@ -2,9 +2,13 @@
 #pragma once 
 
 #include "WebServer.hpp"
+#include <string>
+#include <map>
+#include <vector>
+#include <cstdint>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
-
-#define MAX_CONTENT_LENGTH (1024 * 1024)  // 1MB default
 class Location;
 
 
@@ -60,7 +64,7 @@ class ServerConfig
 		const std::string &getPathErrorPage(short key);
 
 		
-		void	setupServer(void);
+		//void	setupServer(void);
 		bool checkLocaitons() const;
 		void checkToken(std::string &paramt);
 

@@ -1,5 +1,4 @@
-#include "../inc/ServerConfig.hpp"
-
+#include "../inc/WebServer.hpp"
 
 unsigned int    fromHexToDec(const std::string &n)
 {

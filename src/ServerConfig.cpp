@@ -1,6 +1,5 @@
 #include "../inc/ServerConfig.hpp"
-#include "../inc/Location.hpp"
-#include <cstdlib>
+
 
 ServerConfig::ServerConfig()
 {

@@ -1,5 +1,4 @@
-#include "../inc/ServerConfig.hpp"
-
+#include "../inc/WebServer.hpp"
 
 void sigpipeHandle(int sig) { if(sig) {}}
 
