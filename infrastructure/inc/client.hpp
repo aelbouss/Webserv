@@ -21,14 +21,15 @@ class	client
 		std::string get_request();
 		void	set_id(int fd);
 		void	append_request(char *raw_bytes);
-		void	set_content_length();
+		void	set_content_length(size_t nb);
 		void	set_header_size(size_t nb);
-		void	set_headers_complete();
+		void	set_headers_complete(bool var);
 		bool	get_headers_complete();
 		size_t	get_request_size();
 		int check_headers_is_finish();
 		size_t	get_content_length();
 		size_t	get_header_size();
+		int	client::extract_content_len() ;
 
 };
 

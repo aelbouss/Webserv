@@ -51,32 +51,28 @@ int client::check_headers_is_finish()
 	size_t	idx;
 
 	idx = request_buffer.find("\r\n\r\n");
-	if (idx != std::string::npos)
-	{
-		set_header_size(idx + 4); // store  the size of  herader + 4 to signal the starting of body 	
+	if (idx != std::string::npos)	
 		return (1);
-	}
-	return (0);
+	return (-1);
 }
 
-void	client::set_content_length()
+void	client::set_content_length(size_t nb)
 {
-	content_length = get_request_size() - get_header_size();
+	content_length = nb;
 }
 void	client::set_header_size(size_t nb)
 {
 	header_size = nb;
 }
-void	client::set_headers_complete()
+void	client::set_headers_complete(bool var)
 {
-	content_length = true;
+	content_length = var;
 }
 
 bool	client::get_headers_complete()
 {
 	return (content_length);
 }
-
 
 size_t	client::get_content_length()
 {
@@ -85,4 +81,22 @@ size_t	client::get_content_length()
 size_t	client::get_header_size()
 {
 	return (header_size);
+}
+
+int	client::extract_content_len()
+{
+	std::string key = "Content-Length:";
+	std::string req_buffer = get_request();
+	size_t	start_of_number ;
+	size_t	end_of_line ;
+	std::string	value;
+	size_t pos  = req_buffer.find(key);
+
+	if (pos == std::string::npos)
+		return (-1);
+	start_of_number = pos + key.length();
+	end_of_line = req_buffer.find("\r\n", start_of_number);
+	value = req_buffer.substr(start_of_number, end_of_line - start_of_number);
+	content_length = static_cast<size_t>(std::atoll( value.c_str()));
+	return (0);
 }
