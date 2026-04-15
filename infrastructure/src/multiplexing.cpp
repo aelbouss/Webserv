@@ -58,9 +58,9 @@
 			client_card.events = POLLIN ;
 			client_card.revents = 0;
 			fds_list.push_back(client_card);
-			client_room.set_headers_complete(false);
-			client_room.set_content_length(0);
-			client_room.set_header_size(0);
+
+			// client_room.set_is_client_ready(false);
+			// client_room.set_client_id(new_client);
 			client_data.insert(std::pair <int ,client>(new_client, client_room));
 		}
 
@@ -97,7 +97,7 @@
 
 		void	multiplexing::existing_client(int fd)
 		{
-			char buffer[8000];
+			char buffer[8192];
 			int	rb;
 
 			size_t	max_body_size  = 1000000 ; // just hardcoded
@@ -108,48 +108,7 @@
 			memset(buffer, 0, sizeof(buffer));
 			while ((rb = recv(fd, buffer, sizeof(buffer) , 0)) > 0)
 			{
-				client_idx = client_data.find(fd);
-				if (client_idx == client_data.end())
-				{
-					// must make exception here .
-					std::cerr << "invalid client" << std::endl;
-				}
-				client_idx->second.append_request(buffer);
-				if (client_idx->second.get_request_size() > max_body_size)
-				{
-					std::cout << "the client exeeds the max body size" << std::endl;
-					abort_client(fd);
-					// throw an  exception of Error413Exception()
-				}
-				// check for  header ending "\r\n\r\n"
-				if (!client_idx->second.get_headers_complete())
-				{
-					idx = client_idx->second.check_headers_is_finish();
-					if (idx > 0)
-					{
-						client_idx->second.set_headers_complete(true);
-						client_idx->second.set_header_size(idx + 4);
-						if ( client_idx->second.extract_content_len() < 0)
-						{
-							// error of unfinded content  lngth
-							exit(1);
-						}
-						// must here  hand  client oject to the parser to give me the content length
-						std::cout << "the header is finished (*)(*)" << std::endl;
-					}
-				}
-				else
-				{
-					std::cout << client_idx->second.get_request() << std::endl;
-				}
-				memset(buffer, 0,sizeof(buffer));
-				if (rb <  0)
-				{
-					// error to handle ;
-					close(fd);
-					std::cerr << "error occurs here" << std::endl;
-					break ;
-				}
+				 // give  what i read to the  parser .
 			}
 			if (rb == 0)
 			{

@@ -29,7 +29,6 @@ class	client
 		int check_headers_is_finish();
 		size_t	get_content_length();
 		size_t	get_header_size();
-		int	client::extract_content_len() ;
 
 };
 
