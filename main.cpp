@@ -1,5 +1,10 @@
-# include "../inc/server_infra.hpp"
-# include "../inc/multiplexing.hpp"
+# include "includes/client.hpp"
+# include "includes/multiplexing.hpp"
+# include "includes/request.hpp"
+# include "includes/response.hpp"
+# include "includes/multi_listener_setup.hpp"
+# include "includes/server_infra.hpp"
+
 
 int	main(void)
 {

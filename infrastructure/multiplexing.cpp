@@ -1,4 +1,4 @@
-# include "../inc/multiplexing.hpp"
+# include "../includes/multiplexing.hpp"
 
 
 		multiplexing::multiplexing() {}
@@ -53,17 +53,26 @@
 		
 			addr_len = sizeof(client_addr);
 			new_client = accept(fd, (struct sockaddr *)&client_addr, &addr_len);
-			fcntl(new_client, F_SETFL, O_NONBLOCK);
+			if (new_client == -1 )
+				throw MultiplexingExcption("failed to add new client");
+			if (fcntl(new_client, F_SETFL, O_NONBLOCK) < 0)
+			{
+				close(fd);
+				throw MultiplexingExcption("failed to set non blocking");
+			}
 			client_card.fd = new_client ;
 			client_card.events = POLLIN ;
 			client_card.revents = 0;
 			fds_list.push_back(client_card);
-
-			// client_room.set_is_client_ready(false);
-			// client_room.set_client_id(new_client);
+			client_room.set_client_fd(new_client);
+			client_room.set_finished_reading(false);
 			client_data.insert(std::pair <int ,client>(new_client, client_room));
 		}
 
+
+		/*
+		 * this routine below removes a client 
+		 */
 
 		void	multiplexing::abort_client(int fd)
 		{
@@ -95,20 +104,47 @@
 		}
 
 
+		void	multiplexing::set_client_as_finished(int fd)
+		{
+			for (size_t i = 0 ; i < fds_list.size() ; i++)
+			{
+				if (fds_list[i].fd == fd)
+				{
+					fds_list[i].revents = POLLOUT;
+					break ;
+				}
+
+			}
+		}
+
 		void	multiplexing::existing_client(int fd)
 		{
 			char buffer[8192];
 			int	rb;
-
-			size_t	max_body_size  = 1000000 ; // just hardcoded
 			std::map<int, client>::iterator client_idx;
-			int	idx;
-		
+			
+
+			client_idx = client_data.find(fd);
+			if (client_idx == client_data.end())
+				throw MultiplexingExcption("inavlid client");
 			rb = 1;
 			memset(buffer, 0, sizeof(buffer));
-			while ((rb = recv(fd, buffer, sizeof(buffer) , 0)) > 0)
+			rb = recv(fd, buffer, sizeof(buffer) , 0);
+
+			if (rb > 0)
 			{
-				 // give  what i read to the  parser .
+				client_idx->second.parse_request(buffer, rb);
+				if (client_idx->second.is_parsing_finished())
+				{
+					client_idx->second.set_finished_reading(true);
+					set_client_as_finished(fd);
+					return ;
+				}
+			}
+			if (rb < 0)
+			{
+				close(fd);
+				MultiplexingExcption("recv error while reading");
 			}
 			if (rb == 0)
 			{
@@ -166,3 +202,9 @@
 
 			}
 		}
+
+		MultiplexingExcption::MultiplexingExcption::MultiplexingExcption(const std::string& Msg) :msg("Multiplexing Error : " + Msg) {}
+
+		const char * MultiplexingExcption::what() const throw() { return (msg.c_str()); }
+
+		MultiplexingExcption::~MultiplexingExcption() throw() {}

@@ -1,8 +1,8 @@
 CPPC = c++
-CPPFLAGS =  #-Wall -Werror -Wextra
+CPPFLAGS =  -Wall -Werror -Wextra
 STD = -std=c++98
 
-SRC = $(wildcard *.cpp)
+SRC = $(wildcard infrastructure/*.cpp) $(wildcard request/*.cpp) main.cpp
 OBJ = $(SRC:%.cpp=%.o)
 TARGET = Main_server
 

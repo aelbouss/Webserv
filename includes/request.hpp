@@ -6,7 +6,8 @@
 #include <sstream>
 
 
-
+# ifndef REQUEST_HPP
+# define REQUEST_HPP
 
 class Request
 {
@@ -48,3 +49,5 @@ class Request
         bool parseHeaders();
         bool parseBody();
 };
+
+# endif

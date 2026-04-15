@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include <iostream>
 #include <sys/stat.h>
-#include "CgiHandler"
+//#include "CgiHandler"
 
 class Response
 {
