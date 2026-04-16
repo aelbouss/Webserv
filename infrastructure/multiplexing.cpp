@@ -122,7 +122,6 @@
 			char buffer[8192];
 			int	rb;
 			std::map<int, client>::iterator client_idx;
-			
 
 			client_idx = client_data.find(fd);
 			if (client_idx == client_data.end())
@@ -143,18 +142,22 @@
 			}
 			if (rb < 0)
 			{
-				close(fd);
-				MultiplexingExcption("recv error while reading");
+				if (errno != EAGAIN && errno != EWOULDBLOCK)
+				{
+					std::cerr << "Recv error on fd " << fd << ": " << strerror(errno) << std::endl;
+					close(fd);
+					abort_client(fd);
+					return ;
+				}
 			}
 			if (rb == 0)
 			{
-				std::cout << "the client closes the connection" << std::endl;
+				std::cout << "the client : "<< fd << " disconnected" << std::endl;
 				close (fd);
 				abort_client(fd);
+				return ;
 			}
 		}
-
-
 
 		/*
 		 * this routine below signals if the new event occured is a new connection or existing one
@@ -190,7 +193,8 @@
 					// thrwo exception .
 				}
 				for (size_t i = 0 ; i < fds_list.size() ; i++)
-				{
+				{	
+					
 					if (fds_list[i].revents & POLLIN) // an event occured ;
 					{
 						if (is_master_socket(fds_list[i].fd))
