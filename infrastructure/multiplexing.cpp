@@ -117,6 +117,10 @@
 			}
 		}
 
+		/*
+		 * the routine  below  handles  an existing connection
+		 */
+
 		void	multiplexing::existing_client(int fd)
 		{
 			char buffer[8192];
@@ -174,7 +178,7 @@
 		}
 
 		/*
-		 * the routine below runs  the server main job 
+		 * the routine below runs the server main job 
 		 */
 
 		void	multiplexing::cluster_controlling()
@@ -194,7 +198,16 @@
 				}
 				for (size_t i = 0 ; i < fds_list.size() ; i++)
 				{	
-					
+					if (fds_list[i].revents & POLLHUP)
+					{
+						std::cerr << "the client : " << fds_list[i].fd << "hung up " << std::endl;
+						abort_client(fds_list[i].fd);
+					}
+					if (fds_list[i].revents & POLLERR)
+					{
+						// the socket encountrede a hardware or kernel error
+						abort_client(fds_list[i].fd);
+					}
 					if (fds_list[i].revents & POLLIN) // an event occured ;
 					{
 						if (is_master_socket(fds_list[i].fd))
