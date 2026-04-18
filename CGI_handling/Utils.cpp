@@ -1,4 +1,4 @@
-#include "../inc/WebServer.hpp"
+#include "../includes/CgiHandler.hpp"
 
 unsigned int    fromHexToDec(const std::string &n)
 {

@@ -1,4 +1,4 @@
-#include "../inc/CgiHandler.hpp"
+#include "../includes/CgiHandler.hpp"
 
 
 CgiHandler::CgiHandler() {

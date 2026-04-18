@@ -14,12 +14,14 @@ void Request::parse(const char* data, size_t size)
 
     while (1)
     {
+       // std::cout << _buffer << std::endl; just to test with
         if (_state == REQUEST_LINE && !parseRequestLine()) return;
         if (_state == HEADERS && !parseHeaders()) return;
         if (_state == CHUNK_SIZE && !parseChunkSize()) return;
         if (_state == CHUNK_DATA && !parseChunkData()) return;
         if (_state == BODY && !parseBody()) return;
         if (_state == FINISHED || _state == ERROR) return;
+
     }
 }
 
@@ -55,7 +57,7 @@ bool Request::parseRequestLine()
         return false;
     }
 
-    //methodStr that store firrst worda from request line
+    //methodStr that store first word from request line
     if (methodStr == "GET")
         _method = GET;
     else if (methodStr == "POST")

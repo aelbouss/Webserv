@@ -1,4 +1,4 @@
-#include "../inc/Location.hpp"
+#include "../includes/CgiHandler.hpp"
 
 
 Location::Location()

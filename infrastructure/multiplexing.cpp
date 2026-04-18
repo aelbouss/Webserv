@@ -192,20 +192,22 @@
 				activity = poll(&fds_list[0], fds_list.size() , -1);
 				if (activity < 0 )
 				{
-					std::cerr << "an error ocuured " << std::endl;
-					exit(1);
-					// thrwo exception .
+					if (errno == EINTR) // just the os pauses the code we baypass this 
+						continue;
+					throw  MultiplexingExcption("Global Poll Failure: " + std::string(strerror(errno)));
 				}
 				for (size_t i = 0 ; i < fds_list.size() ; i++)
 				{	
 					if (fds_list[i].revents & POLLHUP)
 					{
 						std::cerr << "the client : " << fds_list[i].fd << "hung up " << std::endl;
+						close(fds_list[i].fd);
 						abort_client(fds_list[i].fd);
 					}
 					if (fds_list[i].revents & POLLERR)
 					{
 						// the socket encountrede a hardware or kernel error
+						close(fds_list[i].fd);
 						abort_client(fds_list[i].fd);
 					}
 					if (fds_list[i].revents & POLLIN) // an event occured ;
@@ -216,7 +218,6 @@
 							existing_client(fds_list[i].fd);
 					}
 				}
-
 			}
 		}
 

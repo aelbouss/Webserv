@@ -1,4 +1,4 @@
-#include "../inc/ServerConfig.hpp"
+#include "../includes/CgiHandler.hpp"
 
 
 ServerConfig::ServerConfig()
