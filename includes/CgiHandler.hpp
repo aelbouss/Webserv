@@ -1,8 +1,9 @@
 #pragma once
 
 #include "WebServer.hpp"
+#include "request.hpp"
 
-class HttpRequest;
+typedef Request HttpRequest;
 class CgiHandler {
 	private:
 		std::map<std::string, std::string>	_env;
