@@ -1,10 +1,9 @@
 #include "../includes/response.hpp"
-#include "../includes/Location.hpp"
-#include "../includes/CgiHandler.hpp"
 
 #include <sstream>
 #include <fstream>
 #include <cstdlib>
+#include <cstdio>
 #include <unistd.h>
 #include <iostream>
 #include <sys/stat.h>
@@ -198,14 +197,14 @@ void Response::build(const std::string& method,
 	if (method == "GET")
 	{
 		if (isCgiScriptPath(filePath))
-			serveCgi(filePath, method, queryString, requestBody);
+			serveCgi(filePath, requestPath, method, queryString, requestBody);
 		else
 			serveFile(filePath);
 	}
 	else if (method == "POST")
 	{
 		if (isCgiScriptPath(filePath))
-			serveCgi(filePath, method, queryString, requestBody);
+			serveCgi(filePath, requestPath, method, queryString, requestBody);
 		else
 		{
 			setStatus(201);
@@ -281,10 +280,23 @@ void Response::serveFile(const std::string& filePath)
 
 
 void Response::serveCgi(const std::string& scriptPath,
+						const std::string& requestPath,
 						const std::string& method,
 						const std::string& queryString,
 						const std::vector<char>& requestBody)
 {
+	Request req;
+	std::string target = requestPath.empty() ? "/" : requestPath;
+	if (!queryString.empty())
+		target += "?" + queryString;
+
+	std::string raw = method + " " + target + " HTTP/1.1\r\n";
+	if (method == "POST" || method == "PUT" || !requestBody.empty())
+		raw += "Content-Length: " + intToStr(requestBody.size()) + "\r\n";
+	raw += "\r\n";
+	if (!requestBody.empty())
+		raw.append(requestBody.begin(), requestBody.end());
+	req.parse(raw.c_str(), raw.size());
     if (!fileExists(scriptPath))
     {
         buildErrorPage(404);
@@ -294,7 +306,7 @@ void Response::serveCgi(const std::string& scriptPath,
     CgiHandler cgi(scriptPath);
 
     short error_code = 0;
-    std::string output = cgi.execute(error_code);
+    std::string output = cgi.execute(req, error_code);
 
     if (error_code != 0)
     {

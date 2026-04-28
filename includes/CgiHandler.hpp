@@ -4,6 +4,7 @@
 #include "request.hpp"
 
 typedef Request HttpRequest;
+
 class CgiHandler {
 	private:
 		std::map<std::string, std::string>	_env;
@@ -23,9 +24,9 @@ class CgiHandler {
 		CgiHandler(CgiHandler const &other);
 		CgiHandler &operator=(CgiHandler const &rhs);
 
-		void initEnv(HttpRequest& req, const std::vector<Location>::iterator it_loc);
-		void initEnvCgi(HttpRequest& req, const std::vector<Location>::iterator it_loc);
-		void execute(short &error_code);
+		void initEnv(Request& req, const std::vector<Location>::iterator it_loc);
+		void initEnvCgi(Request& req, const std::vector<Location>::iterator it_loc);
+		std::string execute(Request& request, short &error_code);
 		void sendHeaderBody(int &pipe_out, int &fd, std::string &);
 		void fixHeader(std::string &header);
 		void clear();

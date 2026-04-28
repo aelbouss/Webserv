@@ -3,8 +3,12 @@
 #include <string>
 #include <map>
 #include <vector>
+#include "Location.hpp"
+#include "request.hpp"
+#include "CgiHandler.hpp"
 
 class Location;
+class Request;
 
 class Response
 {
@@ -26,6 +30,7 @@ class Response
 
 		void serveFile(const std::string& filePath);
 		void serveCgi(const std::string& scriptPath,
+					  const std::string& requestPath,
 					  const std::string& method,
 					  const std::string& queryString,
 					  const std::vector<char>& requestBody);

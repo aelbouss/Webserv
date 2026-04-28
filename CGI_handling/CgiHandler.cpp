@@ -1,4 +1,7 @@
 #include "../includes/CgiHandler.hpp"
+#include "../includes/request.hpp"
+#include <sys/wait.h>
+#include <errno.h>
 
 
 CgiHandler::CgiHandler() {
@@ -86,7 +89,7 @@ const std::string &CgiHandler::getCgiPath() const
     return (this->_cgi_path);
 }
 
-void CgiHandler::initEnvCgi(HttpRequest& req, const std::vector<Location>::iterator it_loc)
+void CgiHandler::initEnvCgi(Request& req, const std::vector<Location>::iterator it_loc)
 {
 	std::string cgi_exec = ("cgi-bin/" + it_loc->getCgiPath()[0]).c_str();
 	char    *cwd = getcwd(NULL, 0);
@@ -141,7 +144,7 @@ void CgiHandler::initEnvCgi(HttpRequest& req, const std::vector<Location>::itera
 }
 
 
-void CgiHandler::initEnv(HttpRequest& req, const std::vector<Location>::iterator it_loc)
+void CgiHandler::initEnv(Request& req, const std::vector<Location>::iterator it_loc)
 {
 	int			poz;
 	std::string extension;
@@ -188,28 +191,24 @@ void CgiHandler::initEnv(HttpRequest& req, const std::vector<Location>::iterator
 	this->_argv[2] = NULL;
 }
 
-void CgiHandler::execute(short &error_code)
+std::string CgiHandler::execute(Request& request, short &error_code)
 {
 	if (this->_argv[0] == NULL || this->_argv[1] == NULL)
 	{
 		error_code = 500;
-		return ;
+		return std::string();
 	}
 	if (pipe(pipe_in) < 0)
 	{
-        //Logger::logMsg(RED, CONSOLE_OUTPUT, "pipe() failed");
-
 		error_code = 500;
-		return ;
+		return std::string();
 	}
 	if (pipe(pipe_out) < 0)
 	{
-        //Logger::logMsg(RED, CONSOLE_OUTPUT, "pipe() failed");
-
 		close(pipe_in[0]);
 		close(pipe_in[1]);
 		error_code = 500;
-		return ;
+		return std::string();
 	}
 	this->_cgi_pid = fork();
 	if (this->_cgi_pid == 0)
@@ -223,11 +222,69 @@ void CgiHandler::execute(short &error_code)
 		this->_exit_status = execve(this->_argv[0], this->_argv, this->_ch_env);
 		exit(this->_exit_status);
 	}
-	else if (this->_cgi_pid > 0){}
+	else if (this->_cgi_pid > 0)
+	{
+		/* parent: close the child-side pipe ends that the parent doesn't use.
+		   Parent will use pipe_in[1] to write (stdin for child) and
+		   pipe_out[0] to read (stdout from child). Closing the other ends
+		   here prevents the parent from accidentally keeping write-ends
+		   open and thus avoids read() from blocking waiting for EOF. */
+		close(pipe_in[0]);
+		close(pipe_out[1]);
+
+		int write_fd = this->pipe_in[1];
+		int read_fd  = this->pipe_out[0];
+
+		// 1) Send POST body (if any), then close write end to signal EOF
+		if (request.getMethod() == Request::POST)
+		{
+			const std::vector<char>& body_vec = request.getBody();
+			size_t total = 0;
+			size_t len = body_vec.size();
+			while (total < len)
+			{
+				ssize_t w = write(write_fd, &body_vec[total], len - total);
+				if (w < 0)
+				{
+					if (errno == EINTR) continue;
+					// write error: cleanup and return
+					close(write_fd);
+					close(read_fd);
+					error_code = 500;
+					int status = 0;
+					if (this->_cgi_pid > 0)
+						waitpid(this->_cgi_pid, &status, 0);
+					return std::string();
+				}
+				total += (size_t)w;
+			}
+		}
+		// always close write end after sending (even if zero-length)
+		close(write_fd);
+
+		// 2) Read CGI output until EOF
+		std::string raw;
+		char buf[4096];
+		ssize_t r;
+		while ((r = read(read_fd, buf, sizeof(buf))) > 0)
+		{
+			raw.append(buf, (size_t)r);
+		}
+		close(read_fd);
+
+		// 3) Reap child (block until it exits)
+		int status = 0;
+		pid_t pid = this->getCgiPid(); // or store pid returned by fork
+		if (pid > 0)
+			waitpid(pid, &status, 0);
+
+		return raw;
+	}
 	else
 	{
-        std::cout << "Fork failed" << std::endl;
+		std::cout << "Fork failed" << std::endl;
 		error_code = 500;
+		return std::string();
 	}
 }
 
