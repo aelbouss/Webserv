@@ -103,7 +103,7 @@ void CgiHandler::initEnvCgi(Request& req, const std::vector<Location>::iterator 
 	if(req.getMethod() == POST)
 	{
 		std::stringstream out;
-		out << req.getBody().length();
+		out << req.getBody().size();
 		this->_env["CONTENT_LENGTH"] = out.str();
 		this->_env["CONTENT_TYPE"] = req.getHeader("content-type");
 	}

@@ -2,7 +2,13 @@ CPPC = c++
 CPPFLAGS =  -Wall -Werror -Wextra
 STD = -std=c++98
 
-SRC = $(wildcard infrastructure/*.cpp) $(wildcard request/*.cpp) main.cpp
+SRC = $(wildcard infrastructure/*.cpp) $(wildcard request/*.cpp) \
+	CGI_handling/ConfigParser.cpp \
+	CGI_handling/ConfigFile.cpp \
+	CGI_handling/ServerConfig.cpp \
+	CGI_handling/Location.cpp \
+	CGI_handling/Utils.cpp \
+	main.cpp
 HEADERS = $(wildcard includes/*.hpp)
 
 OBJ = $(SRC:%.cpp=%.o)
