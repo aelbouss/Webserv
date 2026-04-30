@@ -100,7 +100,7 @@ void CgiHandler::initEnvCgi(Request& req, const std::vector<Location>::iterator 
 		if(_cgi_path.length() > 0)
 			_cgi_path.insert(0, tmp);
 	}
-	if(req.getMethod() == POST)
+	if(req.getMethod() == Request::POST)
 	{
 		std::stringstream out;
 		out << req.getBody().size();
@@ -116,7 +116,7 @@ void CgiHandler::initEnvCgi(Request& req, const std::vector<Location>::iterator 
     this->_env["REQUEST_URI"] = this->_cgi_path;//
     this->_env["SERVER_NAME"] = req.getHeader("host");
     this->_env["SERVER_PORT"] ="8002";
-    this->_env["REQUEST_METHOD"] = req.getMethodStr();
+	this->_env["REQUEST_METHOD"] = req.getMethodStr();
     this->_env["SERVER_PROTOCOL"] = "HTTP/1.1";
     this->_env["REDIRECT_STATUS"] = "200";
 	this->_env["SERVER_SOFTWARE"] = "AMANIX";
@@ -163,13 +163,15 @@ void CgiHandler::initEnv(Request& req, const std::vector<Location>::iterator it_
 	poz = findStart(this->_cgi_path, "cgi-bin/");
 	this->_env["SCRIPT_NAME"] = this->_cgi_path;
     this->_env["SCRIPT_FILENAME"] = ((poz < 0 || (size_t)(poz + 8) > this->_cgi_path.size()) ? "" : this->_cgi_path.substr(poz + 8, this->_cgi_path.size())); // check dif cases after put right parametr from the response
-    this->_env["PATH_INFO"] = getPathInfo(req.getPath(), it_loc->getCgiExtension());
+	std::string path = req.getPath();
+	this->_env["PATH_INFO"] = getPathInfo(path, it_loc->getCgiExtension());
     this->_env["PATH_TRANSLATED"] = it_loc->getRootLocation() + (this->_env["PATH_INFO"] == "" ? "/" : this->_env["PATH_INFO"]);
-    this->_env["QUERY_STRING"] = decode(req.getQuery());
-    this->_env["REMOTE_ADDR"] = req.getHeader("host");
+	std::string query = req.getQuery();
+	this->_env["QUERY_STRING"] = decode(query);
+	this->_env["REMOTE_ADDR"] = req.getHeader("host");
 	poz = findStart(req.getHeader("host"), ":");
-    this->_env["SERVER_NAME"] = (poz > 0 ? req.getHeader("host").substr(0, poz) : "");
-    this->_env["SERVER_PORT"] = (poz > 0 ? req.getHeader("host").substr(poz + 1, req.getHeader("host").size()) : "");
+	this->_env["SERVER_NAME"] = (poz > 0 ? req.getHeader("host").substr(0, poz) : "");
+	this->_env["SERVER_PORT"] = (poz > 0 ? req.getHeader("host").substr(poz + 1, req.getHeader("host").size()) : "");
     this->_env["REQUEST_METHOD"] = req.getMethodStr();
     this->_env["HTTP_COOKIE"] = req.getHeader("cookie");
     this->_env["DOCUMENT_ROOT"] = it_loc->getRootLocation();

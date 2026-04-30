@@ -30,12 +30,17 @@ class Request
         bool isFinished();
 
         Method getMethod() const;
+        std::string getMethodStr() const;
         const std::string& getPath() const;
+        const std::string& getQuery() const;
         const std::string& getVersion() const;
         const std::vector<char>& getBody() const;
+        const std::map<std::string, std::string>& getHeaders() const;
+        std::string getHeader(const std::string& name) const;
     private:
         Method      _method;
         std::string _path;
+        std::string _query;
         std::string _version;
         std::map<std::string, std::string> _headers;
         std::vector<char> _body;

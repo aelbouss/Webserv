@@ -98,12 +98,22 @@ void ServerConfig::setRoot(std::string root)
 	checkToken(root);
 	if (ConfigFile::getTypePath(root) == 2)
 	{
+		if (!root.empty() && root[root.size() - 1] != '/')
+			root += '/';
 		this->_root = root;
 		return ;
 	}
 	char dir[1024];
 	getcwd(dir, 1024);
-	std::string full_root = dir + root;
+	std::string full_root = dir;
+	if (!full_root.empty() && full_root[full_root.size() - 1] != '/')
+		full_root += '/';
+	if (!root.empty() && root[0] == '/')
+		full_root = root;
+	else
+		full_root += root;
+	if (!full_root.empty() && full_root[full_root.size() - 1] != '/')
+		full_root += '/';
 	if (ConfigFile::getTypePath(full_root) != 2)
 		throw ErrorException("Wrong syntax: root");
 	this->_root = full_root;

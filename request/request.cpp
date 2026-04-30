@@ -1,12 +1,43 @@
 #include "../includes/request.hpp"
 #include <cstdlib>
 
+static std::string toLowerCopy(const std::string& value)
+{
+    std::string out = value;
 
-Request::Request(): _method(UNKNOWN), _state(REQUEST_LINE) {}
+    for (size_t i = 0; i < out.size(); ++i)
+        out[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(out[i])));
+    return out;
+}
+
+
+Request::Request(): _method(UNKNOWN), _state(REQUEST_LINE), _chunkSize(0) {}
 Request::Method Request::getMethod() const { return _method; }
+std::string Request::getMethodStr() const
+{
+    if (_method == GET)
+        return "GET";
+    if (_method == POST)
+        return "POST";
+    if (_method == DELETE)
+        return "DELETE";
+    return "UNKNOWN";
+}
 const std::string& Request::getPath() const { return _path; }
+const std::string& Request::getQuery() const { return _query; }
 const std::string& Request::getVersion() const { return _version; }
 const std::vector<char>& Request::getBody() const { return _body; }
+const std::map<std::string, std::string>& Request::getHeaders() const { return _headers; }
+
+std::string Request::getHeader(const std::string& name) const
+{
+    std::string key = toLowerCopy(name);
+    std::map<std::string, std::string>::const_iterator it = _headers.find(key);
+
+    if (it != _headers.end())
+        return it->second;
+    return "";
+}
 
 void Request::parse(const char* data, size_t size)
 {
@@ -67,6 +98,15 @@ bool Request::parseRequestLine()
     else
         _method = UNKNOWN;
 
+    size_t queryPos = _path.find('?');
+    if (queryPos != std::string::npos)
+    {
+        _query = _path.substr(queryPos + 1);
+        _path = _path.substr(0, queryPos);
+    }
+    else
+        _query.clear();
+
     // next state
     _state = HEADERS;
     return true;
@@ -112,6 +152,7 @@ bool Request::parseHeaders()
         // remove first char because usually after ':' we find ' ' so we skip it
         if (!value.empty() && value[0] == ' ')
             value.erase(0, 1);
+        key = toLowerCopy(key);
         //store 
         _headers[key] = value;
     }

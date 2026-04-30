@@ -73,45 +73,6 @@ static std::string trimCopy(const std::string& s)
 	return s.substr(begin, end - begin);
 }
 
-static bool writeAll(int fd, const char* data, size_t size)
-{
-	size_t written = 0;
-
-	while (written < size)
-	{
-		ssize_t n = write(fd, data + written, size - written);
-		if (n < 0)
-		{
-			if (errno == EINTR)
-				continue;
-			return false;
-		}
-		written += static_cast<size_t>(n);
-	}
-	return true;
-}
-
-static std::string readAll(int fd)
-{
-	char buf[4096];
-	std::string out;
-
-	while (true)
-	{
-		ssize_t n = read(fd, buf, sizeof(buf));
-		if (n < 0)
-		{
-			if (errno == EINTR)
-				continue;
-			break;
-		}
-		if (n == 0)
-			break;
-		out.append(buf, static_cast<size_t>(n));
-	}
-	return out;
-}
-
 static void applyCgiOutputHeaders(Response& res, const std::string& output)
 {
 	size_t headersEnd = output.find("\r\n\r\n");

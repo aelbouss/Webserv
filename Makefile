@@ -3,6 +3,8 @@ CPPFLAGS =  -Wall -Werror -Wextra
 STD = -std=c++98
 
 SRC = $(wildcard infrastructure/*.cpp) $(wildcard request/*.cpp) \
+	responce/response.cpp \
+	CGI_handling/CgiHandler.cpp \
 	CGI_handling/ConfigParser.cpp \
 	CGI_handling/ConfigFile.cpp \
 	CGI_handling/ServerConfig.cpp \
