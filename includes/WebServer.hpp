@@ -14,7 +14,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <sstream>
-#include <cstdint>
 
 #ifndef MAX_CONTENT_LENGTH
 # define MAX_CONTENT_LENGTH 1048576

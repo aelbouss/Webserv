@@ -137,7 +137,7 @@ void ServerConfig::setPort(std::string paramet)
 	if (*end_ptr != '\0' || parsed < 1 || parsed > 65535)
 		throw ErrorException("Wrong syntax: port");
 	port = static_cast<unsigned int>(parsed);
-	this->_port = (uint16_t) port;
+	this->_port = (unsigned short) port;
 }
 
 bool	 ServerConfig::isValidHost(std::string host) const
@@ -162,7 +162,10 @@ void	ServerConfig::setClientMaxBodysize(std::string paramt)
 	}
 	try
 	{
-		body_size = std::stoul(paramt);
+		std::stringstream ss(paramt);
+		ss >> body_size;
+		if (ss.fail())
+			throw ErrorException("Wrong syntax: client_max_body_size");
 	}
 	catch (const std::exception&)
 	{
@@ -202,7 +205,11 @@ void ServerConfig::setErrorPages(std::vector<std::string> &paramet)
 		}
 		if (paramet[i].size() != 3)
 			throw ErrorException("Error code is invalid");
-		short code_error = std::stoi(paramet[i]);
+		std::stringstream ss(paramet[i]);
+		short code_error;
+		ss >> code_error;
+		if (ss.fail())
+			throw ErrorException("Error code is invalid");
 		if (statusCodeString(code_error)  == "Undefined" || code_error < 400)
 			throw ErrorException ("Incorrect error code: " + paramet[i]);
 		i++;
@@ -500,7 +507,7 @@ const in_addr_t &ServerConfig::getHost()
 	return (this->_host);
 }
 
-const uint16_t &ServerConfig::getPort()
+const unsigned short &ServerConfig::getPort()
 {
 	return (this->_port);
 }

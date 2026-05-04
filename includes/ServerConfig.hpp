@@ -5,7 +5,6 @@
 #include <string>
 #include <map>
 #include <vector>
-#include <cstdint>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
@@ -15,7 +14,7 @@ class Location;
 class ServerConfig
 {
 	private:
-		uint16_t						_port;
+		unsigned short					_port;
 		in_addr_t						_host;
 		std::string						_server_name;
 		std::string						_root;
@@ -55,7 +54,7 @@ class ServerConfig
 		const std::map<short, std::string> &getErrorPages();
 		const std::vector<Location> &getLocations();
 		const size_t &getClientMaxBodySize();
-		const uint16_t &getPort();
+		const unsigned short &getPort();
 		const in_addr_t &getHost();
 		const bool &getAutoindex();
 		const std::string &getServerName();
