@@ -130,7 +130,7 @@ void CgiHandler::initEnvCgi(Request& req, const std::vector<Location>::iterator 
 		std::string key = "HTTP_" + name;
 		_env[key] = it->second;
 	}
-	this->_ch_env = (char **)calloc(sizeof(char *), this->_env.size() + 1);
+	this->_ch_env = (char **)calloc(this->_env.size() + 1, sizeof(char *));
 	std::map<std::string, std::string>::const_iterator it = this->_env.begin();
 	for (int i = 0; it != this->_env.end(); it++, i++)
 	{
@@ -180,7 +180,7 @@ void CgiHandler::initEnv(Request& req, const std::vector<Location>::iterator it_
     this->_env["REDIRECT_STATUS"] = "200";
 	this->_env["SERVER_SOFTWARE"] = "AMANIX";
 
-	this->_ch_env = (char **)calloc(sizeof(char *), this->_env.size() + 1);
+	this->_ch_env = (char **)calloc(this->_env.size() + 1 , sizeof(char *));
 	std::map<std::string, std::string>::const_iterator it = this->_env.begin();
 	for (int i = 0; it != this->_env.end(); it++, i++)
 	{
