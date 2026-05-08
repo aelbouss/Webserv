@@ -1,4 +1,7 @@
 # include "../includes/multiplexing.hpp"
+# include "../includes/response.hpp"
+# include "../includes/ServerConfig.hpp"
+# include <netinet/in.h>
 
 
 		multiplexing::multiplexing() {}
@@ -37,6 +40,14 @@
 		void	multiplexing::set_master_sockets(server_infra& infos)
 		{
 			master_sockets = infos.get_sockets();
+		}
+
+		// Cache server configs as pointers for quick host/port matching.
+		void	multiplexing::set_servers(const std::vector<ServerConfig>& servers_list)
+		{
+			servers.clear();
+			for (size_t i = 0; i < servers_list.size(); ++i)
+				servers.push_back(&servers_list[i]);
 		}
 
 		/*
@@ -110,17 +121,57 @@
 			{
 				if (fds_list[i].fd == fd)
 				{
-					fds_list[i].revents = POLLOUT;
+					fds_list[i].events = POLLOUT;
 					break ;
 				}
 
 			}
 		}
 
+		// Pick the best server based on local port and Host header.
+		static const ServerConfig* select_server_for_request(const std::vector<const ServerConfig*>& servers,
+												 const Request& req, int fd)
+		{
+			if (servers.empty())
+				return NULL;
+
+			sockaddr_in addr;
+			socklen_t len = sizeof(addr);
+			unsigned short local_port = 0;
+			if (getsockname(fd, (struct sockaddr *)&addr, &len) == 0)
+				local_port = ntohs(addr.sin_port);
+
+			std::string host = req.getHeader("host");
+			std::string host_name = host;
+			if (!host.empty())
+			{
+				size_t pos = host.find(':');
+				if (pos != std::string::npos)
+					host_name = host.substr(0, pos);
+			}
+
+			const ServerConfig* first_port_match = NULL;
+			for (size_t i = 0; i < servers.size(); ++i)
+			{
+				const ServerConfig& s = *servers[i];
+				if (local_port != 0 && s.getPort() != local_port)
+					continue;
+				if (!first_port_match)
+					first_port_match = &s;
+				if (!host_name.empty() && s.getServerName() == host_name)
+					return &s;
+			}
+
+			if (first_port_match)
+				return first_port_match;
+			return servers[0];
+		}
+
 		/*
 		 * the routine  below  handles  an existing connection
 		 */
 
+		// Parse incoming data and build a response once the request is complete.
 		void	multiplexing::existing_client(int fd)
 		{
 			char buffer[8192];
@@ -139,6 +190,25 @@
 				client_idx->second.parse_request(buffer, rb);
 				if (client_idx->second.is_parsing_finished())
 				{
+					// Build response using server+location routing when available.
+					Response response;
+					const Request& req = client_idx->second.get_request();
+					const ServerConfig* server = select_server_for_request(servers, req, fd);
+
+					if (server)
+					{
+						const Location* loc = server->matchLocation(req.getPath());
+						if (loc)
+							response.build(req.getMethodStr(), req.getPath(), req.getBody(), *loc, *server);
+						else
+							response.build(req.getMethodStr(), req.getPath(), req.getBody(), server->getRoot());
+					}
+					else
+						response.build(req.getMethodStr(), req.getPath(), req.getBody());
+
+					// Store serialized response for partial sends.
+					client_idx->second.set_response(response.toString());
+					client_idx->second.reset_bytes_sent();
 					client_idx->second.set_finished_reading(true);
 					set_client_as_finished(fd);
 					return ;
@@ -160,6 +230,40 @@
 				close (fd);
 				abort_client(fd);
 				return ;
+			}
+		}
+
+		// Send buffered response data with partial write support.
+		void	multiplexing::send_response(int fd)
+		{
+			std::map<int, client>::iterator it = client_data.find(fd);
+			if (it == client_data.end())
+				return;
+
+			const std::string& data = it->second.get_response();
+			size_t sent = it->second.get_bytes_sent();
+			if (sent >= data.size())
+			{
+				close(fd);
+				abort_client(fd);
+				return;
+			}
+
+			ssize_t n = send(fd, data.c_str() + sent, data.size() - sent, 0);
+			if (n > 0)
+			{
+				it->second.add_bytes_sent(static_cast<size_t>(n));
+				if (it->second.get_bytes_sent() >= data.size())
+				{
+					close(fd);
+					abort_client(fd);
+				}
+				return;
+			}
+			if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
+			{
+				close(fd);
+				abort_client(fd);
 			}
 		}
 
@@ -217,6 +321,8 @@
 						else
 							existing_client(fds_list[i].fd);
 					}
+					if (fds_list[i].revents & POLLOUT)
+						send_response(fds_list[i].fd);
 				}
 			}
 		}

@@ -20,6 +20,8 @@ void ServerManager::setupServers(std::vector<ServerConfig> &servers)
         resources.push_back(engine_resource(iface, static_cast<int>(s.getPort()), s.getClientMaxBodySize()));
     }
     _webserv.set_resources(resources);
+	// Provide parsed config to routing layer in multiplexing.
+	_cluster.set_servers(servers);
 }
 
 void ServerManager::runServers()

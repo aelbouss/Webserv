@@ -1,4 +1,5 @@
 #include "../includes/response.hpp"
+#include "../includes/ServerConfig.hpp"
 
 #include <sstream>
 #include <fstream>
@@ -8,6 +9,7 @@
 #include <iostream>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <dirent.h>
 #include <cerrno>
 
 static std::string buildAllowHeaderFromMethods(const std::vector<short>& methods)
@@ -50,6 +52,88 @@ static std::string resolveRoot(const Location& location, const std::string& serv
 	if (!location.getRootLocation().empty())
 		return location.getRootLocation();
 	return serverRoot;
+}
+
+// Join two path fragments with exactly one slash.
+static std::string joinPath(const std::string& left, const std::string& right)
+{
+	if (left.empty())
+		return right;
+	if (right.empty())
+		return left;
+	if (left[left.size() - 1] == '/' && right[0] == '/')
+		return left + right.substr(1);
+	if (left[left.size() - 1] != '/' && right[0] != '/')
+		return left + "/" + right;
+	return left + right;
+}
+
+// Check if a filesystem path is a directory.
+static bool isDirectoryPath(const std::string& path)
+{
+	struct stat st;
+	if (stat(path.c_str(), &st) != 0)
+		return false;
+	return S_ISDIR(st.st_mode);
+}
+
+// Remove location prefix from request path for alias/root mapping.
+static std::string stripLocationPrefix(const std::string& requestPath, const std::string& locationPath)
+{
+	if (locationPath.empty() || locationPath == "/")
+		return requestPath;
+	if (requestPath.compare(0, locationPath.size(), locationPath) != 0)
+		return requestPath;
+	std::string out = requestPath.substr(locationPath.size());
+	return out.empty() ? "/" : out;
+}
+
+// Build a basic HTML autoindex listing.
+static std::string buildAutoindexPage(const std::string& dirPath, const std::string& uriPath)
+{
+	DIR *dir = opendir(dirPath.c_str());
+	if (!dir)
+		return "";
+
+	std::string base = uriPath;
+	if (base.empty())
+		base = "/";
+	if (base[base.size() - 1] != '/')
+		base += "/";
+
+	std::string body = "<html><body><h1>Index of " + base + "</h1><ul>";
+	for (struct dirent *entry = readdir(dir); entry; entry = readdir(dir))
+	{
+		std::string name = entry->d_name;
+		if (name == ".")
+			continue;
+		std::string href = base + name;
+		body += "<li><a href=\"" + href + "\">" + name + "</a></li>";
+	}
+	closedir(dir);
+	body += "</ul></body></html>";
+	return body;
+}
+
+// Detect CGI usage based on location extensions.
+static bool isCgiByLocation(const Location& location, const std::string& filePath)
+{
+	const std::vector<std::string>& exts = location.getCgiExtension();
+	if (exts.empty())
+		return false;
+	for (size_t i = 0; i < exts.size(); ++i)
+	{
+		const std::string& ext = exts[i];
+		if (ext.size() > 0 && ext[0] == '*')
+		{
+			std::string clean = ext.substr(1);
+			if (filePath.size() >= clean.size() && filePath.substr(filePath.size() - clean.size()) == clean)
+				return true;
+		}
+		else if (filePath.size() >= ext.size() && filePath.substr(filePath.size() - ext.size()) == ext)
+			return true;
+	}
+	return false;
 }
 
 static bool isCgiScriptPath(const std::string& filePath)
@@ -207,6 +291,7 @@ void Response::build(const std::string& method,
 {
 	const std::vector<short>& methods = location.getMethods();
 
+// Apply location rules and build a response without server-level error pages.
 	if (!isMethodAllowedByLocation(method, location))
 	{
 		buildErrorPage(405);
@@ -215,8 +300,258 @@ void Response::build(const std::string& method,
 		_headers["Connection"] = "close";
 		return;
 	}
+	if (requestBody.size() > location.getMaxBodySize())
+	{
+		buildErrorPage(413);
+		_headers["Server"] = "Webserv/1.0";
+		_headers["Connection"] = "close";
+		return;
+	}
+	if (!location.getReturn().empty())
+	{
+		setStatus(302);
+		setHeader("Location", location.getReturn());
+		setBody("");
+		_headers["Server"] = "Webserv/1.0";
+		_headers["Connection"] = "close";
+		return;
+	}
 
-	build(method, path, requestBody, resolveRoot(location, serverRoot));
+	std::string requestPath = path.empty() ? "/" : path;
+	std::string rel = stripLocationPrefix(requestPath, location.getPath());
+	std::string baseRoot = location.getAlias().empty() ? resolveRoot(location, serverRoot) : location.getAlias();
+	std::string filePath = joinPath(baseRoot, rel);
+
+	if (isDirectoryPath(filePath))
+	{
+		if (!location.getIndexLocation().empty())
+			filePath = joinPath(filePath, location.getIndexLocation());
+		else if (location.getAutoindex())
+		{
+			setStatus(200);
+			setHeader("Content-Type", "text/html");
+			setBody(buildAutoindexPage(filePath, requestPath));
+			_headers["Server"] = "Webserv/1.0";
+			_headers["Connection"] = "close";
+			return;
+		}
+		else
+		{
+			buildErrorPage(403);
+			_headers["Server"] = "Webserv/1.0";
+			_headers["Connection"] = "close";
+			return;
+		}
+	}
+
+	std::string queryString;
+	size_t queryPos = requestPath.find('?');
+	if (queryPos != std::string::npos)
+		queryString = requestPath.substr(queryPos + 1);
+
+	bool useCgi = isCgiByLocation(location, filePath) || isCgiScriptPath(filePath);
+	if (method == "GET")
+	{
+		if (useCgi)
+			serveCgi(filePath, requestPath, method, queryString, requestBody);
+		else
+			serveFile(filePath);
+	}
+	else if (method == "POST")
+	{
+		if (useCgi)
+			serveCgi(filePath, requestPath, method, queryString, requestBody);
+		else
+		{
+			setStatus(201);
+			setHeader("Content-Type", "text/plain");
+			setBody("Created");
+		}
+	}
+	else if (method == "DELETE")
+	{
+		if (isDirectoryPath(filePath))
+			buildErrorPage(403);
+		else if (!fileExists(filePath))
+			buildErrorPage(404);
+		else if (std::remove(filePath.c_str()) == 0)
+		{
+			setStatus(200);
+			setHeader("Content-Type", "text/plain");
+			setBody("Deleted");
+		}
+		else
+			buildErrorPage(500);
+	}
+	else
+		buildErrorPage(405);
+
+	_headers["Server"] = "Webserv/1.0";
+	_headers["Connection"] = "close";
+}
+
+void Response::build(const std::string& method,
+					 const std::string& path,
+					 const std::vector<char>& requestBody,
+					 const Location& location,
+					 const ServerConfig& server)
+{
+	const std::vector<short>& methods = location.getMethods();
+
+	// Apply location rules and server-level error pages.
+
+	if (!isMethodAllowedByLocation(method, location))
+	{
+		buildErrorPage(405, &server);
+		_headers["Allow"] = buildAllowHeaderFromMethods(methods);
+		_headers["Server"] = "Webserv/1.0";
+		_headers["Connection"] = "close";
+		return;
+	}
+	if (requestBody.size() > location.getMaxBodySize())
+	{
+		buildErrorPage(413, &server);
+		_headers["Server"] = "Webserv/1.0";
+		_headers["Connection"] = "close";
+		return;
+	}
+	if (!location.getReturn().empty())
+	{
+		setStatus(302);
+		setHeader("Location", location.getReturn());
+		setBody("");
+		_headers["Server"] = "Webserv/1.0";
+		_headers["Connection"] = "close";
+		return;
+	}
+
+	std::string requestPath = path.empty() ? "/" : path;
+	std::string rel = stripLocationPrefix(requestPath, location.getPath());
+	std::string baseRoot = location.getAlias().empty() ? resolveRoot(location, server.getRoot()) : location.getAlias();
+	std::string filePath = joinPath(baseRoot, rel);
+
+	if (isDirectoryPath(filePath))
+	{
+		if (!location.getIndexLocation().empty())
+			filePath = joinPath(filePath, location.getIndexLocation());
+		else if (location.getAutoindex())
+		{
+			setStatus(200);
+			setHeader("Content-Type", "text/html");
+			setBody(buildAutoindexPage(filePath, requestPath));
+			_headers["Server"] = "Webserv/1.0";
+			_headers["Connection"] = "close";
+			return;
+		}
+		else
+		{
+			buildErrorPage(403, &server);
+			_headers["Server"] = "Webserv/1.0";
+			_headers["Connection"] = "close";
+			return;
+		}
+	}
+
+	std::string queryString;
+	size_t queryPos = requestPath.find('?');
+	if (queryPos != std::string::npos)
+		queryString = requestPath.substr(queryPos + 1);
+
+	bool useCgi = isCgiByLocation(location, filePath) || isCgiScriptPath(filePath);
+	if (method == "GET")
+	{
+		if (useCgi)
+		{
+			Request req;
+			std::string target = requestPath.empty() ? "/" : requestPath;
+			if (!queryString.empty())
+				target += "?" + queryString;
+
+			std::string raw = method + " " + target + " HTTP/1.1\r\n";
+			raw += "Host: localhost\r\n";
+			if (method == "POST" || method == "PUT" || !requestBody.empty())
+				raw += "Content-Length: " + intToStr(requestBody.size()) + "\r\n";
+			raw += "\r\n";
+			if (!requestBody.empty())
+				raw.append(requestBody.begin(), requestBody.end());
+			req.parse(raw.c_str(), raw.size());
+
+			CgiHandler cgi(filePath);
+			cgi.initEnvFromLocation(req, location);
+			short error_code = 0;
+			std::string output = cgi.execute(req, error_code);
+			if (error_code != 0)
+			{
+				buildErrorPage(error_code, &server);
+				_headers["Server"] = "Webserv/1.0";
+				_headers["Connection"] = "close";
+				return;
+			}
+			setStatus(200);
+			applyCgiOutputHeaders(*this, output);
+		}
+		else
+			serveFile(filePath);
+	}
+	else if (method == "POST")
+	{
+		if (useCgi)
+		{
+			Request req;
+			std::string target = requestPath.empty() ? "/" : requestPath;
+			if (!queryString.empty())
+				target += "?" + queryString;
+
+			std::string raw = method + " " + target + " HTTP/1.1\r\n";
+			raw += "Host: localhost\r\n";
+			if (method == "POST" || method == "PUT" || !requestBody.empty())
+				raw += "Content-Length: " + intToStr(requestBody.size()) + "\r\n";
+			raw += "\r\n";
+			if (!requestBody.empty())
+				raw.append(requestBody.begin(), requestBody.end());
+			req.parse(raw.c_str(), raw.size());
+
+			CgiHandler cgi(filePath);
+			cgi.initEnvFromLocation(req, location);
+			short error_code = 0;
+			std::string output = cgi.execute(req, error_code);
+			if (error_code != 0)
+			{
+				buildErrorPage(error_code, &server);
+				_headers["Server"] = "Webserv/1.0";
+				_headers["Connection"] = "close";
+				return;
+			}
+			setStatus(200);
+			applyCgiOutputHeaders(*this, output);
+		}
+		else
+		{
+			setStatus(201);
+			setHeader("Content-Type", "text/plain");
+			setBody("Created");
+		}
+	}
+	else if (method == "DELETE")
+	{
+		if (isDirectoryPath(filePath))
+			buildErrorPage(403, &server);
+		else if (!fileExists(filePath))
+			buildErrorPage(404, &server);
+		else if (std::remove(filePath.c_str()) == 0)
+		{
+			setStatus(200);
+			setHeader("Content-Type", "text/plain");
+			setBody("Deleted");
+		}
+		else
+			buildErrorPage(500, &server);
+	}
+	else
+		buildErrorPage(405, &server);
+
+	_headers["Server"] = "Webserv/1.0";
+	_headers["Connection"] = "close";
 }
 
 void Response::serveFile(const std::string& filePath)
@@ -252,6 +587,7 @@ void Response::serveCgi(const std::string& scriptPath,
 		target += "?" + queryString;
 
 	std::string raw = method + " " + target + " HTTP/1.1\r\n";
+	raw += "Host: localhost\r\n";
 	if (method == "POST" || method == "PUT" || !requestBody.empty())
 		raw += "Content-Length: " + intToStr(requestBody.size()) + "\r\n";
 	raw += "\r\n";
@@ -265,6 +601,7 @@ void Response::serveCgi(const std::string& scriptPath,
     }
 
     CgiHandler cgi(scriptPath);
+	cgi.initEnvBasic(req, scriptPath, requestPath.empty() ? "/" : requestPath, queryString);
 
     short error_code = 0;
     std::string output = cgi.execute(req, error_code);
@@ -322,9 +659,32 @@ const std::string& Response::getBody()          const { return _body; }
 
 void Response::buildErrorPage(int code)
 {
-	setStatus(code);
-	setHeader("Content-Type", "text/html");
+	buildErrorPage(code, NULL);
+}
 
+void Response::buildErrorPage(int code, const ServerConfig* server)
+{
+	setStatus(code);
+
+	if (server)
+	{
+		const std::map<short, std::string>& pages = server->getErrorPages();
+		std::map<short, std::string>::const_iterator it = pages.find(code);
+		if (it != pages.end() && !it->second.empty())
+		{
+			std::string path = it->second;
+			if (path[0] != '/')
+				path = joinPath(server->getRoot(), path);
+			if (fileExists(path))
+			{
+				setHeader("Content-Type", mimeType(path));
+				setBody(readFile(path));
+				return;
+			}
+		}
+	}
+
+	setHeader("Content-Type", "text/html");
 	std::string msg = statusMessage(code);
 	std::string body = "<html><body><h1>"
 					 + intToStr(code) + " " + msg
@@ -347,6 +707,7 @@ std::string Response::statusMessage(int code)
 		case 405: return "Method Not Allowed";
 		case 500: return "Internal Server Error";
 		case 501: return "Not Implemented";
+		case 504: return "Gateway Timeout";
 		default:  return "Unknown";
 	}
 }

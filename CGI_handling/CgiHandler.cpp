@@ -2,6 +2,10 @@
 #include "../includes/request.hpp"
 #include <sys/wait.h>
 #include <errno.h>
+#include <poll.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <ctime>
 
 
 CgiHandler::CgiHandler() {
@@ -87,6 +91,114 @@ const pid_t &CgiHandler::getCgiPid() const
 const std::string &CgiHandler::getCgiPath() const
 {
     return (this->_cgi_path);
+}
+
+void CgiHandler::initEnvBasic(Request& req, const std::string& scriptPath,
+						const std::string& requestUri,
+						const std::string& queryString)
+{
+	this->_cgi_path = scriptPath;
+
+	this->_env.clear();
+	this->_env["GATEWAY_INTERFACE"] = "CGI/1.1";
+	this->_env["SCRIPT_FILENAME"] = scriptPath;
+	this->_env["SCRIPT_NAME"] = requestUri;
+	this->_env["REQUEST_METHOD"] = req.getMethodStr();
+	this->_env["QUERY_STRING"] = queryString;
+	this->_env["REQUEST_URI"] = requestUri + (queryString.empty() ? "" : "?" + queryString);
+	this->_env["SERVER_PROTOCOL"] = "HTTP/1.1";
+	this->_env["REDIRECT_STATUS"] = "200";
+
+	if (req.getMethod() == Request::POST)
+	{
+		std::stringstream out;
+		out << req.getBody().size();
+		this->_env["CONTENT_LENGTH"] = out.str();
+		this->_env["CONTENT_TYPE"] = req.getHeader("content-type");
+	}
+
+	std::string host = req.getHeader("host");
+	if (!host.empty())
+	{
+		size_t pos = host.find(':');
+		this->_env["SERVER_NAME"] = (pos == std::string::npos) ? host : host.substr(0, pos);
+		this->_env["SERVER_PORT"] = (pos == std::string::npos) ? "" : host.substr(pos + 1);
+	}
+
+	std::map<std::string, std::string> request_headers = req.getHeaders();
+	for (std::map<std::string, std::string>::iterator it = request_headers.begin();
+		 it != request_headers.end(); ++it)
+	{
+		std::string name = it->first;
+		std::transform(name.begin(), name.end(), name.begin(), ::toupper);
+		std::string key = "HTTP_" + name;
+		_env[key] = it->second;
+	}
+
+	this->_ch_env = (char **)calloc(this->_env.size() + 1, sizeof(char *));
+	std::map<std::string, std::string>::const_iterator it = this->_env.begin();
+	for (int i = 0; it != this->_env.end(); it++, i++)
+	{
+		std::string tmp = it->first + "=" + it->second;
+		this->_ch_env[i] = strdup(tmp.c_str());
+	}
+
+	this->_argv = (char **)malloc(sizeof(char *) * 2);
+	this->_argv[0] = strdup(this->_cgi_path.c_str());
+	this->_argv[1] = NULL;
+}
+
+// Build CGI env/argv from a location's extension mapping.
+void CgiHandler::initEnvFromLocation(Request& req, const Location& location)
+{
+	std::string extension;
+	std::string ext_path;
+
+	if (this->_cgi_path.empty() || this->_cgi_path.find(".") == std::string::npos)
+		return;
+
+	extension = this->_cgi_path.substr(this->_cgi_path.find("."));
+	const std::map<std::string, std::string>& ext_map = location.getExtensionPath();
+	std::map<std::string, std::string>::const_iterator it_path = ext_map.find(extension);
+	if (it_path == ext_map.end())
+		return;
+	ext_path = it_path->second;
+
+	this->_env.clear();
+	this->_env["AUTH_TYPE"] = "Basic";
+	this->_env["CONTENT_LENGTH"] = req.getHeader("content-length");
+	this->_env["CONTENT_TYPE"] = req.getHeader("content-type");
+	this->_env["GATEWAY_INTERFACE"] = "CGI/1.1";
+	this->_env["SCRIPT_NAME"] = this->_cgi_path;
+	this->_env["SCRIPT_FILENAME"] = this->_cgi_path;
+	std::string path = req.getPath();
+	this->_env["PATH_INFO"] = getPathInfo(path, location.getCgiExtension());
+	this->_env["PATH_TRANSLATED"] = location.getRootLocation() + (this->_env["PATH_INFO"].empty() ? "/" : this->_env["PATH_INFO"]);
+	std::string query = req.getQuery();
+	this->_env["QUERY_STRING"] = decode(query);
+	this->_env["REMOTE_ADDR"] = req.getHeader("host");
+	int poz = findStart(req.getHeader("host"), ":");
+	this->_env["SERVER_NAME"] = (poz > 0 ? req.getHeader("host").substr(0, poz) : "");
+	this->_env["SERVER_PORT"] = (poz > 0 ? req.getHeader("host").substr(poz + 1, req.getHeader("host").size()) : "");
+	this->_env["REQUEST_METHOD"] = req.getMethodStr();
+	this->_env["HTTP_COOKIE"] = req.getHeader("cookie");
+	this->_env["DOCUMENT_ROOT"] = location.getRootLocation();
+	this->_env["REQUEST_URI"] = req.getPath() + req.getQuery();
+	this->_env["SERVER_PROTOCOL"] = "HTTP/1.1";
+	this->_env["REDIRECT_STATUS"] = "200";
+	this->_env["SERVER_SOFTWARE"] = "AMANIX";
+
+	this->_ch_env = (char **)calloc(this->_env.size() + 1 , sizeof(char *));
+	std::map<std::string, std::string>::const_iterator it = this->_env.begin();
+	for (int i = 0; it != this->_env.end(); it++, i++)
+	{
+		std::string tmp = it->first + "=" + it->second;
+		this->_ch_env[i] = strdup(tmp.c_str());
+	}
+	this->_argv = (char **)malloc(sizeof(char *) * 3);
+	this->_argv[0] = strdup(ext_path.c_str());
+	this->_argv[1] = strdup(this->_cgi_path.c_str());
+	this->_argv[2] = NULL;
 }
 
 void CgiHandler::initEnvCgi(Request& req, const std::vector<Location>::iterator it_loc)
@@ -195,6 +307,10 @@ void CgiHandler::initEnv(Request& req, const std::vector<Location>::iterator it_
 
 std::string CgiHandler::execute(Request& request, short &error_code)
 {
+	// Guard CGI execution with a fixed timeout to avoid blocking the server loop.
+	const int timeoutSeconds = 5;
+	const int pollSliceMs = 100;
+
 	if (this->_argv[0] == NULL || this->_argv[1] == NULL)
 	{
 		error_code = 500;
@@ -237,6 +353,10 @@ std::string CgiHandler::execute(Request& request, short &error_code)
 		int write_fd = this->pipe_in[1];
 		int read_fd  = this->pipe_out[0];
 
+		int flags = fcntl(read_fd, F_GETFL, 0);
+		if (flags >= 0)
+			fcntl(read_fd, F_SETFL, flags | O_NONBLOCK);
+
 		// 1) Send POST body (if any), then close write end to signal EOF
 		if (request.getMethod() == Request::POST)
 		{
@@ -264,21 +384,66 @@ std::string CgiHandler::execute(Request& request, short &error_code)
 		// always close write end after sending (even if zero-length)
 		close(write_fd);
 
-		// 2) Read CGI output until EOF
+		// 2) Read CGI output with timeout using poll()
 		std::string raw;
 		char buf[4096];
-		ssize_t r;
-		while ((r = read(read_fd, buf, sizeof(buf))) > 0)
+		time_t start = std::time(NULL);
+		bool timed_out = false;
+		while (true)
 		{
-			raw.append(buf, (size_t)r);
+			if (std::time(NULL) - start >= timeoutSeconds)
+			{
+				timed_out = true;
+				break;
+			}
+
+			struct pollfd pfd;
+			pfd.fd = read_fd;
+			pfd.events = POLLIN | POLLHUP;
+			pfd.revents = 0;
+			int pr = poll(&pfd, 1, pollSliceMs);
+			if (pr < 0)
+			{
+				if (errno == EINTR)
+					continue;
+				break;
+			}
+			if (pr == 0)
+				continue;
+
+			if (pfd.revents & (POLLIN | POLLHUP))
+			{
+				ssize_t r = read(read_fd, buf, sizeof(buf));
+				if (r > 0)
+				{
+					raw.append(buf, (size_t)r);
+				}
+				else if (r == 0)
+				{
+					break;
+				}
+				else if (errno != EAGAIN && errno != EWOULDBLOCK)
+				{
+					break;
+				}
+			}
 		}
 		close(read_fd);
 
-		// 3) Reap child (block until it exits)
+		// 3) Reap child (timeout-aware)
 		int status = 0;
-		pid_t pid = this->getCgiPid(); // or store pid returned by fork
+		pid_t pid = this->getCgiPid();
 		if (pid > 0)
+		{
+			if (timed_out)
+			{
+				kill(pid, SIGKILL);
+				waitpid(pid, &status, 0);
+				error_code = 504;
+				return std::string();
+			}
 			waitpid(pid, &status, 0);
+		}
 
 		return raw;
 	}

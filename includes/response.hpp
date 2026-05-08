@@ -9,6 +9,7 @@
 
 class Location;
 class Request;
+class ServerConfig;
 
 class Response
 {
@@ -22,11 +23,19 @@ class Response
 				   const std::vector<char>& requestBody,
 				   const std::string& webRoot = "./www");
 
+		// Build using location rules with a server root fallback.
 		void build(const std::string& method,
 				   const std::string& path,
 				   const std::vector<char>& requestBody,
 				   const Location& location,
 				   const std::string& serverRoot);
+
+		// Build using full server config (error pages, root, CGI mapping).
+		void build(const std::string& method,
+				   const std::string& path,
+				   const std::vector<char>& requestBody,
+				   const Location& location,
+				   const ServerConfig& server);
 
 		void serveFile(const std::string& filePath);
 		void serveCgi(const std::string& scriptPath,
@@ -53,6 +62,7 @@ class Response
 		std::string                         _body;
 
 		void buildErrorPage(int code);
+		void buildErrorPage(int code, const ServerConfig* server);
 
 		static std::string statusMessage(int code);
 		static std::string mimeType(const std::string& path);

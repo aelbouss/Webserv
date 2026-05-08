@@ -26,6 +26,10 @@ class CgiHandler {
 
 		void initEnv(Request& req, const std::vector<Location>::iterator it_loc);
 		void initEnvCgi(Request& req, const std::vector<Location>::iterator it_loc);
+		void initEnvBasic(Request& req, const std::string& scriptPath,
+						  const std::string& requestUri,
+						  const std::string& queryString);
+		void initEnvFromLocation(Request& req, const Location& location);
 		std::string execute(Request& request, short &error_code);
 		void sendHeaderBody(int &pipe_out, int &fd, std::string &);
 		void fixHeader(std::string &header);

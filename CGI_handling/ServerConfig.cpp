@@ -492,7 +492,8 @@ const std::string &ServerConfig::getServerName()
 	return (this->_server_name);
 }
 
-const std::string &ServerConfig::getRoot()
+// Root path for this server instance.
+const std::string &ServerConfig::getRoot() const
 {
 	return (this->_root);
 }
@@ -522,7 +523,8 @@ const std::vector<Location> &ServerConfig::getLocations()
 	return (this->_locations);
 }
 
-const std::map<short, std::string> &ServerConfig::getErrorPages()
+// Error page mapping used for server-aware responses.
+const std::map<short, std::string> &ServerConfig::getErrorPages() const
 {
 	return (this->_error_pages);
 }
@@ -543,6 +545,30 @@ const std::string &ServerConfig::getPathErrorPage(short key)
 	if (it == this->_error_pages.end())
 		throw ErrorException("Error_page does not exist");
 	return (it->second);
+}
+
+// Longest-prefix match for location blocks.
+const Location *ServerConfig::matchLocation(const std::string &path) const
+{
+	const Location *best = NULL;
+	size_t bestLen = 0;
+
+	for (std::vector<Location>::const_iterator it = _locations.begin(); it != _locations.end(); ++it)
+	{
+		const std::string &locPath = it->getPath();
+		if (locPath.empty())
+			continue;
+		if (path.compare(0, locPath.size(), locPath) != 0)
+			continue;
+		if (path.size() > locPath.size() && locPath != "/" && path[locPath.size()] != '/')
+			continue;
+		if (locPath.size() >= bestLen)
+		{
+			best = &(*it);
+			bestLen = locPath.size();
+		}
+	}
+	return best;
 }
 
 // Detect duplicate location paths within the same server block.

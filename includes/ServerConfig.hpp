@@ -1,4 +1,3 @@
-
 #pragma once 
 
 #include "WebServer.hpp"
@@ -49,9 +48,11 @@ class ServerConfig
 
 
 		//Getter
-		const std::string	&getRoot();
+		// Server root directory for path resolution.
+		const std::string	&getRoot() const;
 		int   	getFd();
-		const std::map<short, std::string> &getErrorPages();
+		// Configured error page mapping by status code.
+		const std::map<short, std::string> &getErrorPages() const;
 		const std::vector<Location> &getLocations();
 		const size_t &getClientMaxBodySize();
 		const unsigned short &getPort();
@@ -61,6 +62,8 @@ class ServerConfig
 		const std::string &getIndex();
 		const std::vector<Location>::iterator getLocationKey(std::string key);
 		const std::string &getPathErrorPage(short key);
+		// Longest-prefix match for a request path.
+		const Location *matchLocation(const std::string &path) const;
 
 		
 		//void	setupServer(void);

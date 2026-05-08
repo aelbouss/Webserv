@@ -125,11 +125,12 @@ bool Request::parseHeaders()
         //If line is empty -> headers finished
         if (line.empty())
         {
-            // 1. Check for Chunked Encoding FIRST
-            if (_headers.count("Transfer-Encoding") && _headers["Transfer-Encoding"].find("chunked") != std::string::npos)
+            // Check transfer-encoding first (headers are normalized to lowercase).
+            if (_headers.count("transfer-encoding") &&
+                toLowerCopy(_headers["transfer-encoding"]).find("chunked") != std::string::npos)
                 _state = CHUNK_SIZE; 
             // if there is content lenght that's mean we have a body else finish baecause no body
-            else if (_headers.count("Content-Length"))
+            else if (_headers.count("content-length"))
                 _state = BODY;
             else
                 _state = FINISHED;
@@ -202,13 +203,28 @@ bool Request::parseChunkData()
 
 bool Request::parseBody()
 {
-    size_t contentLenght = std::atoi(_headers["Content-Length"].c_str()); // convert value of Content-Length from str to int
-    if (_buffer.size() < contentLenght) // wait for  _buffer finish all bvbody content bytes we need base on Content-Length
+    // Content-Length lookup uses normalized lowercase keys.
+    std::map<std::string, std::string>::const_iterator it = _headers.find("content-length");
+    if (it == _headers.end())
+    {
+        _state = ERROR;
+        return false;
+    }
+
+    char *end_ptr = NULL;
+    unsigned long contentLength = std::strtoul(it->second.c_str(), &end_ptr, 10);
+    if (*end_ptr != '\0')
+    {
+        _state = ERROR;
+        return false;
+    }
+
+    if (_buffer.size() < contentLength) // wait for  _buffer finish all bvbody content bytes we need base on Content-Length
         return false;
     // store all content from 0 to Content-Length in _body
-    _body.insert(_body.end(), _buffer.begin(), _buffer.begin() + contentLenght);
+    _body.insert(_body.end(), _buffer.begin(), _buffer.begin() + contentLength);
     //remove body copntent from _buffer
-    _buffer.erase(0, contentLenght);
+    _buffer.erase(0, contentLength);
     //update satate
     _state = FINISHED;
 
