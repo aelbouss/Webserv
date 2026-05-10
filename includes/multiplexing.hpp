@@ -20,7 +20,6 @@ class	MultiplexingExcption : public std::exception
 class	server_infra;
 class	client;
 class	Request;
-class	ServerConfig;
 
 # define MAX_BODY_SIZE = 1000;
 
@@ -30,16 +29,12 @@ class	multiplexing
 		std::vector <struct pollfd> fds_list;
 		std::vector <int> master_sockets ;
 		std::map <int, client> client_data; // to just distinguish master vs client sockets .
-		// Server config pointers for routing by host/port.
-		std::vector <const ServerConfig*> servers;
 	public :
 		multiplexing();
 		multiplexing&	operator = (const multiplexing& src);
 		multiplexing( const multiplexing& src);
 		~multiplexing();
 		void	set_master_sockets(server_infra& infos);
-		// Provide parsed servers to the network loop for routing.
-		void	set_servers(const std::vector<ServerConfig>& servers_list);
 		void	add_new_client(int fd);
 		void	remove_client(int fd);
 		void	take_master_sockets_snapshot(server_infra& infos);
@@ -50,8 +45,6 @@ class	multiplexing
 		void existing_client(int fd);
 		void abort_client(int fd);
 		void	set_client_as_finished(int fd);
-		// Flush buffered response data to the socket.
-		void	send_response(int fd);
 };
 
 # endif
