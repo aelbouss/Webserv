@@ -311,7 +311,7 @@ std::string CgiHandler::execute(Request& request, short &error_code)
 	const int timeoutSeconds = 5;
 	const int pollSliceMs = 100;
 
-	if (this->_argv[0] == NULL || this->_argv[1] == NULL)
+	if (this->_argv == NULL || this->_ch_env == NULL || this->_argv[0] == NULL)
 	{
 		error_code = 500;
 		return std::string();

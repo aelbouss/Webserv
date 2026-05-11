@@ -129,7 +129,7 @@ bool Request::parseHeaders()
             if (_headers.count("transfer-encoding") &&
                 toLowerCopy(_headers["transfer-encoding"]).find("chunked") != std::string::npos)
                 _state = CHUNK_SIZE; 
-            // if there is content lenght that's mean we have a body else finish baecause no body
+            // if there is content length that's mean we have a body else finish baecause no body
             else if (_headers.count("content-length"))
                 _state = BODY;
             else

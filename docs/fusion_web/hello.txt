@@ -1,0 +1,2 @@
+Hello from Webserv GET.
+This file proves the server can serve a static asset from docs/fusion_web.
