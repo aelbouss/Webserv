@@ -383,20 +383,17 @@ int ServerConfig::isValidLocation(Location &location) const
 {
 	if (location.getPath() == "/cgi-bin")
 	{
-		if (location.getCgiPath().empty() || location.getCgiExtension().empty() || location.getIndexLocation().empty())
+		if (location.getCgiPath().empty() || location.getCgiExtension().empty() || location.getIndexLocation().empty() || location.getRootLocation().empty())
 			return (1);
 
+		std::string scriptPath = location.getRootLocation();
+		if (scriptPath[scriptPath.size() - 1] != '/')
+			scriptPath += "/";
+		scriptPath += location.getIndexLocation();
 
-		if (ConfigFile::checkFile(location.getIndexLocation(), 4) < 0)
+		if (ConfigFile::checkFile(scriptPath, 4) < 0)
 		{
-			std::string path = location.getRootLocation() + location.getPath() + "/" + location.getIndexLocation();
-			if (ConfigFile::getTypePath(path) != 1)
-			{				
-				std::string root = getcwd(NULL, 0);
-				location.setRootLocation(root);
-				path = root + location.getPath() + "/" + location.getIndexLocation();
-			}
-			if (path.empty() || ConfigFile::getTypePath(path) != 1 || ConfigFile::checkFile(path, 4) < 0)
+			if (ConfigFile::getTypePath(scriptPath) != 1)
 				return (1);
 		}
 		if (location.getCgiPath().size() != location.getCgiExtension().size())

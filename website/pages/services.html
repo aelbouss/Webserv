@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nexus — Services</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #04080f; --surface: #0a1220; --border: rgba(120,180,255,0.10);
+      --accent: #4f8cff; --accent2: #a78bfa; --text: #e8f0fe; --muted: #7a90ab;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 48px; background: rgba(4,8,15,0.78); backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+    .logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.5rem; color: #fff; text-decoration: none; letter-spacing: -0.03em; }
+    .logo span { color: var(--accent); }
+    .nav-links { display: flex; gap: 10px; align-items: center; }
+    .nav-links a { color: var(--muted); text-decoration: none; font-size: 0.9rem; padding: 8px 16px; border-radius: 8px; transition: color .2s, background .2s; }
+    .nav-links a:hover, .nav-links a.active { color: #fff; background: rgba(255,255,255,0.06); }
+    .nav-cta { background: var(--accent); color: #fff !important; border-radius: 999px !important; padding: 8px 22px !important; font-weight: 600 !important; }
+
+    .page-header {
+      padding: 160px 48px 80px; position: relative; overflow: hidden;
+      border-bottom: 1px solid var(--border);
+    }
+    .page-header::before {
+      content: ''; position: absolute; top: 20%; right: 5%;
+      width: 400px; height: 400px;
+      background: radial-gradient(circle, rgba(79,140,255,0.13) 0%, transparent 70%);
+    }
+    .crumb { font-size: 0.8rem; color: var(--muted); margin-bottom: 16px; }
+    .crumb a { color: var(--accent); text-decoration: none; }
+    .page-header h1 {
+      font-family: 'Syne', sans-serif; font-weight: 800;
+      font-size: clamp(2.5rem, 5vw, 4.5rem); letter-spacing: -0.04em; max-width: 16ch;
+    }
+    .page-header p { color: var(--muted); margin-top: 20px; max-width: 55ch; font-size: 1.05rem; line-height: 1.7; }
+
+    .plans-section { padding: 80px 48px; }
+    .section-label { font-size: 0.78rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
+    .section-title { font-family: 'Syne', sans-serif; font-weight: 800; font-size: clamp(1.8rem, 3.5vw, 2.8rem); letter-spacing: -0.04em; margin-bottom: 52px; }
+
+    .plans-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    .plan-card {
+      padding: 36px; border-radius: 24px;
+      background: var(--surface); border: 1px solid var(--border);
+      position: relative; transition: transform .25s, border-color .25s;
+    }
+    .plan-card:hover { transform: translateY(-4px); }
+    .plan-card.featured {
+      border-color: rgba(79,140,255,0.4);
+      background: linear-gradient(145deg, rgba(79,140,255,0.07), rgba(10,18,32,1));
+    }
+    .plan-badge {
+      position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+      background: var(--accent); color: #fff; font-size: 0.72rem; font-weight: 700;
+      padding: 4px 14px; border-radius: 999px; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap;
+    }
+    .plan-name { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1rem; color: var(--muted); margin-bottom: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
+    .plan-price { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 3rem; letter-spacing: -0.05em; margin-bottom: 6px; }
+    .plan-price sup { font-size: 1.2rem; vertical-align: super; }
+    .plan-period { color: var(--muted); font-size: 0.85rem; margin-bottom: 28px; }
+    .plan-features { list-style: none; margin-bottom: 32px; display: flex; flex-direction: column; gap: 12px; }
+    .plan-features li { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; }
+    .plan-features li::before { content: '✓'; color: var(--accent); font-weight: 700; flex-shrink: 0; }
+    .plan-features li.off { color: var(--muted); }
+    .plan-features li.off::before { content: '—'; color: var(--muted); }
+    .plan-btn {
+      display: block; width: 100%; padding: 13px; border-radius: 12px;
+      font: inherit; font-size: 0.95rem; font-weight: 700; cursor: pointer; text-align: center;
+      text-decoration: none; border: none; transition: transform .18s, opacity .18s;
+    }
+    .plan-btn:hover { transform: translateY(-1px); opacity: 0.9; }
+    .plan-btn.primary { background: var(--accent); color: #fff; box-shadow: 0 4px 20px rgba(79,140,255,0.3); }
+    .plan-btn.outline { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .plan-btn.outline:hover { border-color: rgba(120,180,255,0.3); background: rgba(255,255,255,0.04); }
+
+    .features-table { margin: 80px 48px; }
+    .features-table h2 { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 2rem; letter-spacing: -0.04em; margin-bottom: 32px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 16px 20px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    td { font-size: 0.92rem; color: var(--text); }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    .check { color: var(--accent); font-weight: 700; }
+    .dash { color: var(--muted); }
+
+    footer {
+      border-top: 1px solid var(--border); padding: 28px 48px;
+      display: flex; justify-content: space-between; align-items: center;
+      color: var(--muted); font-size: 0.85rem;
+    }
+    footer a { color: var(--muted); text-decoration: none; }
+    footer a:hover { color: #fff; }
+
+    @media (max-width: 900px) {
+      nav { padding: 16px 20px; }
+      .page-header { padding: 120px 20px 60px; }
+      .plans-section, .features-table { padding: 60px 20px; margin: 0; }
+      .plans-grid { grid-template-columns: 1fr; }
+      table { font-size: 0.85rem; }
+      th, td { padding: 12px; }
+      footer { flex-direction: column; gap: 10px; padding: 24px 20px; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="logo" href="/index.html">Nex<span>us</span></a>
+  <div class="nav-links">
+    <a href="/index.html">Home</a>
+    <a href="/pages/about.html">About</a>
+    <a href="/pages/services.html" class="active">Services</a>
+    <a href="/pages/contact.html">Contact</a>
+    <a href="/pages/login.html" class="nav-cta">Login</a>
+  </div>
+</nav>
+
+<div class="page-header">
+  <div class="crumb"><a href="/index.html">Home</a> / Services</div>
+  <h1>Simple, honest pricing.</h1>
+  <p>Pick the plan that fits your project. Upgrade or downgrade at any time. No hidden fees, no surprises.</p>
+</div>
+
+<div class="plans-section">
+  <div class="section-label">Plans</div>
+  <div class="section-title">Choose your tier</div>
+  <div class="plans-grid">
+
+    <div class="plan-card">
+      <div class="plan-name">Starter</div>
+      <div class="plan-price"><sup>$</sup>0</div>
+      <div class="plan-period">Forever free</div>
+      <ul class="plan-features">
+        <li>1 virtual host</li>
+        <li>Static file serving</li>
+        <li>Custom error pages</li>
+        <li>Basic CGI support</li>
+        <li class="off">Multi-server setup</li>
+        <li class="off">Priority support</li>
+      </ul>
+      <a href="/pages/login.html" class="plan-btn outline">Get started</a>
+    </div>
+
+    <div class="plan-card featured">
+      <div class="plan-badge">Most popular</div>
+      <div class="plan-name">Pro</div>
+      <div class="plan-price"><sup>$</sup>19</div>
+      <div class="plan-period">per month</div>
+      <ul class="plan-features">
+        <li>Up to 10 virtual hosts</li>
+        <li>Static file serving</li>
+        <li>Custom error pages</li>
+        <li>Full CGI support</li>
+        <li>Multi-server setup</li>
+        <li class="off">Priority support</li>
+      </ul>
+      <a href="/pages/login.html" class="plan-btn primary">Start free trial →</a>
+    </div>
+
+    <div class="plan-card">
+      <div class="plan-name">Enterprise</div>
+      <div class="plan-price"><sup>$</sup>79</div>
+      <div class="plan-period">per month</div>
+      <ul class="plan-features">
+        <li>Unlimited virtual hosts</li>
+        <li>Static file serving</li>
+        <li>Custom error pages</li>
+        <li>Full CGI support</li>
+        <li>Multi-server setup</li>
+        <li>Priority support</li>
+      </ul>
+      <a href="/pages/contact.html" class="plan-btn outline">Contact sales</a>
+    </div>
+
+  </div>
+</div>
+
+<div class="features-table">
+  <h2>Feature comparison</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Feature</th>
+        <th>Starter</th>
+        <th>Pro</th>
+        <th>Enterprise</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Virtual hosts</td><td>1</td><td>10</td><td>Unlimited</td></tr>
+      <tr><td>Static file serving</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+      <tr><td>CGI scripts</td><td>Basic</td><td class="check">Full</td><td class="check">Full</td></tr>
+      <tr><td>Custom error pages</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+      <tr><td>Directory autoindex</td><td class="dash">—</td><td class="check">✓</td><td class="check">✓</td></tr>
+      <tr><td>HTTP redirects</td><td class="dash">—</td><td class="check">✓</td><td class="check">✓</td></tr>
+      <tr><td>Access method control</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+      <tr><td>Max body size config</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+      <tr><td>Priority support</td><td class="dash">—</td><td class="dash">—</td><td class="check">✓</td></tr>
+      <tr><td>SLA guarantee</td><td class="dash">—</td><td>99.5%</td><td>99.9%</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<footer>
+  <span>© 2025 Nexus. Running on your webserv.</span>
+  <div style="display:flex;gap:20px;">
+    <a href="/pages/about.html">About</a>
+    <a href="/pages/contact.html">Contact</a>
+    <a href="/pages/login.html">Login</a>
+  </div>
+</footer>
+
+</body>
+</html>

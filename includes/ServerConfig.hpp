@@ -86,7 +86,7 @@ class ServerConfig
 			public:
 				ErrorException(std::string message) throw()
 				{
-					_message = "SERVER CONFIG ERROR" + message;
+					_message = "SERVER CONFIG ERROR " + message;
 				}
 				virtual const char* what() const throw()
 				{

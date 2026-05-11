@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nexus — Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #04080f;
+      --surface: #0a1220;
+      --border: rgba(120,180,255,0.10);
+      --accent: #4f8cff;
+      --accent2: #a78bfa;
+      --text: #e8f0fe;
+      --muted: #7a90ab;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+    }
+
+    /* Left decorative panel */
+    .left-panel {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      display: flex; flex-direction: column; justify-content: center; align-items: flex-start;
+      padding: 60px;
+      background: linear-gradient(145deg, #060d1a, #0c1a30);
+    }
+    .left-panel::before {
+      content: '';
+      position: absolute; top: -10%; left: -10%;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(79,140,255,0.20) 0%, transparent 65%);
+    }
+    .left-panel::after {
+      content: '';
+      position: absolute; bottom: -5%; right: -5%;
+      width: 400px; height: 400px;
+      background: radial-gradient(circle, rgba(167,139,250,0.15) 0%, transparent 65%);
+    }
+    .lp-content { position: relative; z-index: 1; }
+    .lp-logo {
+      font-family: 'Syne', sans-serif; font-weight: 800; font-size: 2rem;
+      color: #fff; text-decoration: none; letter-spacing: -0.03em; display: block; margin-bottom: 48px;
+    }
+    .lp-logo span { color: var(--accent); }
+    .lp-content h2 {
+      font-family: 'Syne', sans-serif; font-weight: 800;
+      font-size: clamp(2.2rem, 4vw, 3.5rem); letter-spacing: -0.04em;
+      line-height: 1.05; max-width: 14ch; margin-bottom: 20px;
+    }
+    .lp-content p { color: var(--muted); line-height: 1.7; max-width: 38ch; font-size: 1rem; }
+    .dots {
+      display: flex; gap: 10px; margin-top: 56px;
+    }
+    .dot {
+      width: 36px; height: 6px; border-radius: 3px; background: rgba(79,140,255,0.3);
+    }
+    .dot.active { background: var(--accent); width: 60px; }
+
+    /* Right login form */
+    .right-panel {
+      width: 480px; flex-shrink: 0;
+      display: flex; flex-direction: column; justify-content: center;
+      padding: 64px 52px;
+      background: var(--bg);
+      border-left: 1px solid var(--border);
+    }
+    .back-link {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--muted); text-decoration: none; font-size: 0.85rem;
+      margin-bottom: 48px; transition: color .2s;
+    }
+    .back-link:hover { color: #fff; }
+    .form-title {
+      font-family: 'Syne', sans-serif; font-weight: 800; font-size: 2rem;
+      letter-spacing: -0.04em; margin-bottom: 8px;
+    }
+    .form-sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 40px; line-height: 1.6; }
+    .form-sub a { color: var(--accent); text-decoration: none; }
+    .form-sub a:hover { text-decoration: underline; }
+
+    .field { margin-bottom: 20px; }
+    label {
+      display: block; font-size: 0.82rem; font-weight: 600;
+      color: var(--muted); letter-spacing: 0.04em; margin-bottom: 8px; text-transform: uppercase;
+    }
+    input[type="text"], input[type="email"], input[type="password"] {
+      width: 100%; padding: 14px 18px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; color: var(--text); font: inherit; font-size: 0.95rem;
+      outline: none; transition: border-color .2s, box-shadow .2s;
+    }
+    input:focus {
+      border-color: rgba(79,140,255,0.5);
+      box-shadow: 0 0 0 3px rgba(79,140,255,0.12);
+    }
+    input::placeholder { color: rgba(122,144,171,0.5); }
+
+    .field-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .field-row label { margin-bottom: 0; }
+    .forgot { font-size: 0.8rem; color: var(--accent); text-decoration: none; }
+    .forgot:hover { text-decoration: underline; }
+
+    .divider {
+      display: flex; align-items: center; gap: 14px; margin: 24px 0;
+      color: var(--muted); font-size: 0.8rem;
+    }
+    .divider::before, .divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+
+    .btn-submit {
+      width: 100%; padding: 15px;
+      background: var(--accent); color: #fff;
+      border: none; border-radius: 12px; font: inherit; font-size: 1rem; font-weight: 700;
+      cursor: pointer; transition: background .2s, transform .15s, box-shadow .2s;
+      box-shadow: 0 4px 24px rgba(79,140,255,0.30);
+    }
+    .btn-submit:hover { background: #6fa3ff; transform: translateY(-1px); box-shadow: 0 8px 32px rgba(79,140,255,0.45); }
+    .btn-submit:active { transform: translateY(0); }
+
+    .btn-social {
+      width: 100%; padding: 13px;
+      background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 12px;
+      font: inherit; font-size: 0.9rem; font-weight: 500; cursor: pointer;
+      transition: background .2s, border-color .2s;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      text-decoration: none;
+    }
+    .btn-social:hover { background: #0e1a2e; border-color: rgba(120,180,255,0.25); }
+
+    .msg { display: none; margin-top: 16px; padding: 14px 18px; border-radius: 10px; font-size: 0.9rem; }
+    .msg.success { background: rgba(52,211,153,0.10); border: 1px solid rgba(52,211,153,0.25); color: #34d399; }
+    .msg.error { background: rgba(255,107,107,0.10); border: 1px solid rgba(255,107,107,0.25); color: #ff6b6b; }
+
+    .tabs { display: flex; gap: 4px; margin-bottom: 36px; background: var(--surface); border-radius: 12px; padding: 4px; }
+    .tab {
+      flex: 1; padding: 10px; border-radius: 9px; border: none; font: inherit;
+      font-size: 0.88rem; font-weight: 600; cursor: pointer; transition: background .2s, color .2s;
+      background: transparent; color: var(--muted);
+    }
+    .tab.active { background: var(--accent); color: #fff; }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    @media (max-width: 860px) {
+      .left-panel { display: none; }
+      .right-panel { width: 100%; border-left: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="left-panel">
+  <div class="lp-content">
+    <a class="lp-logo" href="/index.html">Nex<span>us</span></a>
+    <h2>Welcome back to Nexus.</h2>
+    <p>Your personal dashboard awaits. Sign in to manage your server, track deployments, and monitor performance in real time.</p>
+    <div class="dots">
+      <div class="dot active"></div>
+      <div class="dot"></div>
+      <div class="dot"></div>
+    </div>
+  </div>
+</div>
+
+<div class="right-panel">
+  <a class="back-link" href="/index.html">← Back to home</a>
+
+  <div class="tabs" role="tablist">
+    <button class="tab active" id="tab-login" onclick="switchTab('login')">Sign In</button>
+    <button class="tab" id="tab-signup" onclick="switchTab('signup')">Create Account</button>
+  </div>
+
+  <!-- LOGIN PANEL -->
+  <div class="panel active" id="panel-login">
+    <h1 class="form-title">Sign in</h1>
+    <p class="form-sub">Don't have an account? <a href="#" onclick="switchTab('signup')">Create one free</a></p>
+    <form action="/cgi-bin/acc.py" method="get">
+      <div class="field">
+        <label for="login-email">Username or Email</label>
+        <input type="text" name="username" id="login-email" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <div class="field">
+        <div class="field-row">
+          <label for="login-pass">Password</label>
+          <a class="forgot" href="#">Forgot password?</a>
+        </div>
+        <input type="password" name="password" id="login-pass" placeholder="••••••••" autocomplete="current-password">
+      </div>
+
+      <button type="submit" class="btn-submit">Sign In →</button>
+    </form>
+    <div class="divider">or</div>
+    <a class="btn-social" href="#">
+      <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Continue with Google
+    </a>
+    <div id="login-msg" class="msg"></div>
+  </div>
+
+  <!-- SIGNUP PANEL -->
+  <div class="panel" id="panel-signup">
+    <h1 class="form-title">Create account</h1>
+    <p class="form-sub">Already have one? <a href="#" onclick="switchTab('login')">Sign in</a></p>
+    <form action="/cgi-bin/acc.py" method="get">
+      <div class="field">
+        <label for="signup-name">Full Name</label>
+        <input type="text" name="firstname" id="signup-name" placeholder="Jane Doe" autocomplete="name">
+      </div>
+      <div class="field">
+        <label for="signup-email">Username (or Email)</label>
+        <input type="text" name="username" id="signup-email" placeholder="you@example.com" autocomplete="email">
+      </div>
+      <div class="field">
+        <label for="signup-pass">Password</label>
+        <input type="password" name="password" id="signup-pass" placeholder="Minimum 8 characters" autocomplete="new-password">
+      </div>
+
+      <button type="submit" class="btn-submit">Create Account →</button>
+    </form>
+    <div id="signup-msg" class="msg"></div>
+  </div>
+</div>
+
+<script>
+  function switchTab(tab) {
+    document.getElementById('panel-login').classList.toggle('active', tab === 'login');
+    document.getElementById('panel-signup').classList.toggle('active', tab === 'signup');
+    document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+    document.getElementById('tab-signup').classList.toggle('active', tab === 'signup');
+  }
+
+  function showMsg(id, type, text) {
+    const el = document.getElementById(id);
+    el.className = 'msg ' + type;
+    el.textContent = text;
+    el.style.display = 'block';
+  }
+
+  function saveUser(name, email) {
+    const user = { name, email, joinedAt: new Date().toISOString() };
+    sessionStorage.setItem('nexus_user', JSON.stringify(user));
+  }
+
+  function handleLogin() {
+    const email = document.getElementById('login-email').value.trim();
+    const pass = document.getElementById('login-pass').value;
+    if (!email || !pass) { showMsg('login-msg', 'error', 'Please fill in all fields.'); return; }
+    if (!email.includes('@')) { showMsg('login-msg', 'error', 'Please enter a valid email.'); return; }
+    // Derive a display name from email if no signup name stored
+    const stored = sessionStorage.getItem('nexus_pending_name');
+    const name = stored || email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    saveUser(name, email);
+    showMsg('login-msg', 'success', '✓ Welcome back! Redirecting to your dashboard…');
+    setTimeout(() => { window.location.href = '/pages/dashboard.html'; }, 1400);
+  }
+
+  function handleSignup() {
+    const name = document.getElementById('signup-name').value.trim();
+    const email = document.getElementById('signup-email').value.trim();
+    const pass = document.getElementById('signup-pass').value;
+    if (!name || !email || !pass) { showMsg('signup-msg', 'error', 'Please fill in all fields.'); return; }
+    if (!email.includes('@')) { showMsg('signup-msg', 'error', 'Please enter a valid email.'); return; }
+    if (pass.length < 8) { showMsg('signup-msg', 'error', 'Password must be at least 8 characters.'); return; }
+    // Stash name so login tab can pick it up
+    sessionStorage.setItem('nexus_pending_name', name);
+    saveUser(name, email);
+    showMsg('signup-msg', 'success', '✓ Account created! Taking you to your dashboard…');
+    setTimeout(() => { window.location.href = '/pages/dashboard.html'; }, 1400);
+  }
+</script>
+</body>
+</html>

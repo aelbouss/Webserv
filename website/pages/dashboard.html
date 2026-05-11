@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nexus — Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #04080f;
+      --surface: #0a1220;
+      --surface2: #0d1828;
+      --border: rgba(120,180,255,0.10);
+      --border2: rgba(120,180,255,0.16);
+      --accent: #4f8cff;
+      --accent2: #a78bfa;
+      --text: #e8f0fe;
+      --muted: #7a90ab;
+      --green: #34d399;
+      --yellow: #fbbf24;
+      --red: #f87171;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      grid-template-rows: auto 1fr;
+    }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      grid-row: 1 / 3;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      padding: 28px 0;
+      position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    }
+    .sidebar-logo {
+      font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.4rem;
+      color: #fff; text-decoration: none; letter-spacing: -0.03em;
+      padding: 0 24px 28px; display: block;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-logo span { color: var(--accent); }
+    .sidebar-section {
+      padding: 20px 12px 8px;
+      font-size: 0.7rem; font-weight: 600; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .sidebar-section:first-of-type { padding-top: 24px; }
+    .nav-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 16px; margin: 2px 8px; border-radius: 10px;
+      color: var(--muted); text-decoration: none; font-size: 0.9rem; font-weight: 500;
+      cursor: pointer; transition: background .18s, color .18s;
+    }
+    .nav-item:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+    .nav-item.active { background: rgba(79,140,255,0.12); color: var(--accent); }
+    .nav-item .icon { font-size: 1rem; width: 20px; text-align: center; flex-shrink: 0; }
+    .nav-item .badge {
+      margin-left: auto; background: var(--accent); color: #fff;
+      font-size: 0.65rem; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+    }
+    .sidebar-bottom {
+      margin-top: auto; padding: 16px 8px 0;
+      border-top: 1px solid var(--border);
+    }
+    .sidebar-user {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 16px; border-radius: 12px;
+      transition: background .18s; cursor: pointer;
+    }
+    .sidebar-user:hover { background: rgba(255,255,255,0.04); }
+    .sidebar-avatar {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Syne', sans-serif; font-weight: 800; font-size: 0.9rem; color: #fff;
+      flex-shrink: 0;
+    }
+    .sidebar-user-info strong { display: block; font-size: 0.88rem; font-weight: 600; }
+    .sidebar-user-info span { color: var(--muted); font-size: 0.78rem; }
+
+    /* ── TOPBAR ── */
+    .topbar {
+      grid-column: 2;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 40px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(4,8,15,0.7); backdrop-filter: blur(12px);
+      position: sticky; top: 0; z-index: 10;
+    }
+    .topbar-left h1 {
+      font-family: 'Syne', sans-serif; font-size: 1.25rem; font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+    .topbar-left p { color: var(--muted); font-size: 0.83rem; margin-top: 2px; }
+    .topbar-right { display: flex; align-items: center; gap: 14px; }
+    .notif-btn {
+      width: 38px; height: 38px; border-radius: 10px;
+      background: var(--surface); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 1rem; transition: border-color .2s;
+      position: relative;
+    }
+    .notif-btn:hover { border-color: var(--border2); }
+    .notif-dot {
+      position: absolute; top: 7px; right: 7px;
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--accent); border: 2px solid var(--bg);
+    }
+    .logout-btn {
+      display: flex; align-items: center; gap: 7px;
+      padding: 9px 18px; border-radius: 999px;
+      background: transparent; border: 1px solid var(--border);
+      color: var(--muted); font: inherit; font-size: 0.85rem; font-weight: 500;
+      cursor: pointer; transition: border-color .2s, color .2s;
+      text-decoration: none;
+    }
+    .logout-btn:hover { border-color: rgba(248,113,113,0.4); color: var(--red); }
+
+    /* ── MAIN CONTENT ── */
+    .main {
+      grid-column: 2;
+      padding: 36px 40px 60px;
+      overflow-y: auto;
+    }
+
+    /* Welcome banner */
+    .welcome-banner {
+      padding: 32px 36px;
+      border-radius: 24px;
+      background: linear-gradient(135deg, rgba(79,140,255,0.10) 0%, rgba(167,139,250,0.08) 100%);
+      border: 1px solid rgba(79,140,255,0.18);
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 32px;
+      animation: fadeUp .5s ease both;
+      position: relative; overflow: hidden;
+    }
+    .welcome-banner::before {
+      content: '';
+      position: absolute; right: -60px; top: -60px;
+      width: 260px; height: 260px;
+      background: radial-gradient(circle, rgba(79,140,255,0.12), transparent 70%);
+    }
+    .welcome-text h2 {
+      font-family: 'Syne', sans-serif; font-weight: 800;
+      font-size: 1.6rem; letter-spacing: -0.04em; margin-bottom: 6px;
+    }
+    .welcome-text p { color: var(--muted); font-size: 0.92rem; line-height: 1.6; }
+    .welcome-avatar {
+      width: 72px; height: 72px; border-radius: 50%; flex-shrink: 0;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.8rem; color: #fff;
+      box-shadow: 0 0 0 4px rgba(79,140,255,0.2);
+      position: relative; z-index: 1;
+    }
+
+    /* Stats row */
+    .stats-row {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+      margin-bottom: 32px;
+    }
+    .stat-card {
+      padding: 22px 24px; border-radius: 18px;
+      background: var(--surface); border: 1px solid var(--border);
+      transition: border-color .22s, transform .22s;
+      animation: fadeUp .5s ease both;
+    }
+    .stat-card:hover { border-color: var(--border2); transform: translateY(-3px); }
+    .stat-card:nth-child(1) { animation-delay: .08s; }
+    .stat-card:nth-child(2) { animation-delay: .14s; }
+    .stat-card:nth-child(3) { animation-delay: .20s; }
+    .stat-card:nth-child(4) { animation-delay: .26s; }
+    .stat-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+    .stat-label { color: var(--muted); font-size: 0.8rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
+    .stat-icon { font-size: 1.1rem; }
+    .stat-val {
+      font-family: 'Syne', sans-serif; font-size: 1.9rem; font-weight: 800;
+      letter-spacing: -0.04em; line-height: 1; margin-bottom: 6px;
+    }
+    .stat-change { font-size: 0.78rem; }
+    .stat-change.up { color: var(--green); }
+    .stat-change.down { color: var(--red); }
+    .stat-change.neutral { color: var(--muted); }
+
+    /* Two-col lower */
+    .lower-grid { display: grid; grid-template-columns: 1fr 320px; gap: 20px; }
+
+    /* Profile card */
+    .profile-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 22px;
+      padding: 28px; animation: fadeUp .5s .3s ease both;
+    }
+    .profile-card h3 {
+      font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1rem;
+      margin-bottom: 22px; display: flex; align-items: center; gap: 10px;
+    }
+    .profile-card h3 span { color: var(--muted); font-family: 'DM Sans', sans-serif; font-weight: 400; font-size: 0.8rem; }
+    .profile-rows { display: flex; flex-direction: column; gap: 14px; }
+    .profile-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 18px; border-radius: 12px;
+      background: rgba(255,255,255,0.025); border: 1px solid var(--border);
+    }
+    .profile-row-left { display: flex; align-items: center; gap: 12px; }
+    .pr-icon {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: rgba(79,140,255,0.10); display: flex; align-items: center; justify-content: center; font-size: 0.95rem;
+    }
+    .pr-label { font-size: 0.78rem; color: var(--muted); margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .pr-val { font-size: 0.92rem; font-weight: 500; }
+    .edit-btn {
+      background: transparent; border: 1px solid var(--border); border-radius: 8px;
+      padding: 6px 14px; font: inherit; font-size: 0.78rem; font-weight: 600;
+      color: var(--muted); cursor: pointer; transition: border-color .2s, color .2s;
+    }
+    .edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Activity feed */
+    .activity-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 22px;
+      padding: 28px; animation: fadeUp .5s .38s ease both;
+    }
+    .activity-card h3 {
+      font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1rem;
+      margin-bottom: 22px;
+    }
+    .activity-list { display: flex; flex-direction: column; gap: 0; }
+    .activity-item {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 13px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .activity-item:last-child { border-bottom: none; }
+    .act-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 6px;
+    }
+    .act-dot.green { background: var(--green); }
+    .act-dot.blue { background: var(--accent); }
+    .act-dot.yellow { background: var(--yellow); }
+    .act-dot.red { background: var(--red); }
+    .act-text { font-size: 0.85rem; line-height: 1.5; }
+    .act-text strong { font-weight: 600; display: block; }
+    .act-time { color: var(--muted); font-size: 0.75rem; margin-top: 2px; }
+
+    /* Plan badge */
+    .plan-bar {
+      margin-top: 20px; padding: 18px 22px;
+      background: linear-gradient(135deg, rgba(79,140,255,0.09), rgba(167,139,250,0.07));
+      border: 1px solid rgba(79,140,255,0.2); border-radius: 16px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .plan-bar-left strong { display: block; font-size: 0.9rem; margin-bottom: 2px; }
+    .plan-bar-left span { color: var(--muted); font-size: 0.78rem; }
+    .plan-pill {
+      background: var(--accent); color: #fff; font-size: 0.72rem; font-weight: 700;
+      padding: 4px 12px; border-radius: 999px; letter-spacing: 0.06em; text-transform: uppercase;
+    }
+
+    @keyframes fadeUp { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:translateY(0) } }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; } 
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(120,180,255,0.15); border-radius: 3px; }
+
+    @media (max-width: 960px) {
+      body { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .topbar, .main { grid-column: 1; }
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+      .lower-grid { grid-template-columns: 1fr; }
+      .topbar { padding: 16px 20px; }
+      .main { padding: 24px 20px 60px; }
+    }
+    @media (max-width: 520px) {
+      .stats-row { grid-template-columns: 1fr; }
+      .welcome-avatar { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── SIDEBAR ── -->
+<aside class="sidebar">
+  <a class="sidebar-logo" href="/index.html">Nex<span>us</span></a>
+
+  <div class="sidebar-section">Main</div>
+  <a class="nav-item active" href="/pages/dashboard.html">
+    <span class="icon">⊞</span> Dashboard
+  </a>
+  <a class="nav-item" href="/pages/about.html">
+    <span class="icon">ℹ</span> About
+  </a>
+  <a class="nav-item" href="/pages/services.html">
+    <span class="icon">◈</span> Services
+  </a>
+  <a class="nav-item" href="/pages/contact.html">
+    <span class="icon">✉</span> Contact
+    <span class="badge">1</span>
+  </a>
+
+  <div class="sidebar-section">Account</div>
+  <a class="nav-item" href="#">
+    <span class="icon">◎</span> Profile
+  </a>
+  <a class="nav-item" href="#">
+    <span class="icon">⚙</span> Settings
+  </a>
+  <a class="nav-item" href="#">
+    <span class="icon">🔔</span> Notifications
+  </a>
+
+  <div class="sidebar-bottom">
+    <div class="sidebar-user">
+      <div class="sidebar-avatar" id="sb-avatar">J</div>
+      <div class="sidebar-user-info">
+        <strong id="sb-name">Jane Doe</strong>
+        <span>Pro Plan</span>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- ── TOPBAR ── -->
+<header class="topbar">
+  <div class="topbar-left">
+    <h1>My Dashboard</h1>
+    <p id="topbar-date">Loading…</p>
+  </div>
+  <div class="topbar-right">
+    <div class="notif-btn" title="Notifications">
+      🔔<span class="notif-dot"></span>
+    </div>
+    <a href="/pages/login.html" class="logout-btn" onclick="handleLogout()">
+      Sign out →
+    </a>
+  </div>
+</header>
+
+<!-- ── MAIN ── -->
+<main class="main">
+
+  <!-- Welcome -->
+  <div class="welcome-banner">
+    <div class="welcome-text">
+      <h2>Welcome back, <span id="greet-name">Jane</span>! 👋</h2>
+      <p>Here's a snapshot of your account. Everything looks great.</p>
+    </div>
+    <div class="welcome-avatar" id="main-avatar">J</div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-top">
+        <span class="stat-label">Requests today</span>
+        <span class="stat-icon">⚡</span>
+      </div>
+      <div class="stat-val">2,847</div>
+      <div class="stat-change up">↑ 12% vs yesterday</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-top">
+        <span class="stat-label">Uptime</span>
+        <span class="stat-icon">💚</span>
+      </div>
+      <div class="stat-val">99.9<span style="font-size:1rem">%</span></div>
+      <div class="stat-change up">↑ All systems normal</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-top">
+        <span class="stat-label">Avg response</span>
+        <span class="stat-icon">⏱</span>
+      </div>
+      <div class="stat-val">38<span style="font-size:1rem">ms</span></div>
+      <div class="stat-change down">↓ 4ms slower than avg</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-top">
+        <span class="stat-label">Active hosts</span>
+        <span class="stat-icon">🌐</span>
+      </div>
+      <div class="stat-val">3</div>
+      <div class="stat-change neutral">of 10 on Pro plan</div>
+    </div>
+  </div>
+
+  <!-- Lower grid -->
+  <div class="lower-grid">
+
+    <!-- Profile info -->
+    <div class="profile-card">
+      <h3>Profile <span>— click Edit to update any field</span></h3>
+      <div class="profile-rows">
+
+        <div class="profile-row">
+          <div class="profile-row-left">
+            <div class="pr-icon">👤</div>
+            <div>
+              <div class="pr-label">Full name</div>
+              <div class="pr-val" id="pf-name">Jane Doe</div>
+            </div>
+          </div>
+          <button class="edit-btn" onclick="editField('pf-name','Full name')">Edit</button>
+        </div>
+
+        <div class="profile-row">
+          <div class="profile-row-left">
+            <div class="pr-icon">📧</div>
+            <div>
+              <div class="pr-label">Email</div>
+              <div class="pr-val" id="pf-email">jane@example.com</div>
+            </div>
+          </div>
+          <button class="edit-btn" onclick="editField('pf-email','Email')">Edit</button>
+        </div>
+
+        <div class="profile-row">
+          <div class="profile-row-left">
+            <div class="pr-icon">🔑</div>
+            <div>
+              <div class="pr-label">Password</div>
+              <div class="pr-val">••••••••••</div>
+            </div>
+          </div>
+          <button class="edit-btn">Change</button>
+        </div>
+
+        <div class="profile-row">
+          <div class="profile-row-left">
+            <div class="pr-icon">📅</div>
+            <div>
+              <div class="pr-label">Member since</div>
+              <div class="pr-val" id="pf-joined">May 2025</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="profile-row">
+          <div class="profile-row-left">
+            <div class="pr-icon">🌍</div>
+            <div>
+              <div class="pr-label">Server root</div>
+              <div class="pr-val">docs/nexus_site/</div>
+            </div>
+          </div>
+          <button class="edit-btn">Edit</button>
+        </div>
+
+      </div>
+
+      <div class="plan-bar">
+        <div class="plan-bar-left">
+          <strong>Pro Plan</strong>
+          <span>Renews on June 15, 2025</span>
+        </div>
+        <a href="/pages/services.html" class="plan-pill">Upgrade →</a>
+      </div>
+    </div>
+
+    <!-- Recent activity -->
+    <div class="activity-card">
+      <h3>Recent Activity</h3>
+      <div class="activity-list">
+        <div class="activity-item">
+          <div class="act-dot green"></div>
+          <div class="act-text">
+            <strong>Login successful</strong>
+            <div class="act-time">Just now · 127.0.0.1</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="act-dot blue"></div>
+          <div class="act-text">
+            <strong>CGI script executed</strong>
+            <div class="act-time">2 min ago · /cgi-bin/echo.py</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="act-dot yellow"></div>
+          <div class="act-text">
+            <strong>Config reloaded</strong>
+            <div class="act-time">1 hour ago · nexus.conf</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="act-dot red"></div>
+          <div class="act-text">
+            <strong>404 — /old-page.html</strong>
+            <div class="act-time">3 hours ago · GET</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="act-dot green"></div>
+          <div class="act-text">
+            <strong>File deleted</strong>
+            <div class="act-time">Yesterday · /delete-target.txt</div>
+          </div>
+        </div>
+        <div class="activity-item">
+          <div class="act-dot blue"></div>
+          <div class="act-text">
+            <strong>New virtual host added</strong>
+            <div class="act-time">2 days ago · shop.local</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+  // ── Read user data saved at login ──
+  function getUser() {
+    try {
+      const raw = sessionStorage.getItem('nexus_user');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
+
+  function initials(name) {
+    if (!name) return '?';
+    return name.trim().split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+  }
+
+  const user = getUser();
+
+  // If nobody is logged in, bounce back to login
+  if (!user) {
+    window.location.href = '/pages/login.html';
+  } else {
+    const firstName = user.name ? user.name.split(' ')[0] : user.email.split('@')[0];
+    const ini = initials(user.name || firstName);
+
+    document.getElementById('greet-name').textContent = firstName;
+    document.getElementById('pf-name').textContent = user.name || '—';
+    document.getElementById('pf-email').textContent = user.email || '—';
+    document.getElementById('sb-name').textContent = user.name || user.email;
+    document.getElementById('sb-avatar').textContent = ini;
+    document.getElementById('main-avatar').textContent = ini;
+    document.title = `Nexus — ${firstName}'s Dashboard`;
+  }
+
+  // ── Date string ──
+  const now = new Date();
+  document.getElementById('topbar-date').textContent =
+    now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+  // ── Inline edit ──
+  function editField(id, label) {
+    const el = document.getElementById(id);
+    const current = el.textContent;
+    const val = prompt(`Update ${label}:`, current);
+    if (val !== null && val.trim()) {
+      el.textContent = val.trim();
+      // Persist name changes
+      if (id === 'pf-name') {
+        const u = getUser();
+        if (u) { u.name = val.trim(); sessionStorage.setItem('nexus_user', JSON.stringify(u)); }
+        const ini = initials(val.trim());
+        document.getElementById('sb-avatar').textContent = ini;
+        document.getElementById('main-avatar').textContent = ini;
+        document.getElementById('sb-name').textContent = val.trim();
+        document.getElementById('greet-name').textContent = val.trim().split(' ')[0];
+      }
+      if (id === 'pf-email') {
+        const u = getUser();
+        if (u) { u.email = val.trim(); sessionStorage.setItem('nexus_user', JSON.stringify(u)); }
+      }
+    }
+  }
+
+  // ── Logout ──
+  function handleLogout(e) {
+    sessionStorage.removeItem('nexus_user');
+  }
+</script>
+</body>
+</html>
