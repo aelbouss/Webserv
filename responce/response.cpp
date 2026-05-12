@@ -47,14 +47,7 @@ static bool isMethodAllowedByLocation(const std::string& method, const Location&
 	return false;
 }
 
-static std::string resolveRoot(const Location& location, const std::string& serverRoot)
-{
-	if (!location.getRootLocation().empty())
-		return location.getRootLocation();
-	return serverRoot;
-}
 
-// Join two path fragments with exactly one slash.
 static std::string joinPath(const std::string& left, const std::string& right)
 {
 	if (left.empty())
@@ -220,432 +213,269 @@ Response::Response(int statusCode, const std::string& body,
 	_headers["Content-Length"] = intToStr(body.size());
 }
 
+void Response::setDefaultHeaders()
+{
+	_headers["Server"]     = "Webserv/1.0";
+	_headers["Connection"] = "close";
+}
+
+void Response::error(int code, const ServerConfig* server)
+{
+	buildErrorPage(code, server);
+	if (!_headers.count("Allow"))
+	{
+		// Only add Allow header for 405, and only if not already set
+		if (code != 405 && _headers.count("Allow"))
+		{
+			// Keep existing Allow header
+		}
+	}
+}
+
+bool Response::executeCgiHandler(const std::string& filePath,
+								  const std::string& requestPath,
+								  const std::string& method,
+								  const std::string& queryString,
+								  const std::vector<char>& requestBody,
+								  const Location* location,
+								  const ServerConfig* server)
+{
+	Request req;
+	std::string target = requestPath.empty() ? "/" : requestPath;
+	if (!queryString.empty())
+		target += "?" + queryString;
+
+	std::string raw = method + " " + target + " HTTP/1.1\r\n";
+	raw += "Host: localhost\r\n";
+	if (method == "POST" || method == "PUT" || !requestBody.empty())
+		raw += "Content-Length: " + intToStr(requestBody.size()) + "\r\n";
+	raw += "\r\n";
+	if (!requestBody.empty())
+		raw.append(requestBody.begin(), requestBody.end());
+	req.parse(raw.c_str(), raw.size());
+
+	if (!fileExists(filePath))
+	{
+		error(404, server);
+		return false;
+	}
+
+	CgiHandler cgi(filePath);
+	if (location)
+		cgi.initEnvFromLocation(req, *location);
+	else
+		cgi.initEnvBasic(req, filePath, requestPath.empty() ? "/" : requestPath, queryString);
+
+	short error_code = 0;
+	std::string output = cgi.execute(req, error_code);
+	if (error_code != 0)
+	{
+		error(error_code, server);
+		return false;
+	}
+
+	setStatus(200);
+	applyCgiOutputHeaders(*this, output);
+	return true;
+}
+
+void Response::build(const std::string& method,
+					 const std::string& path,
+					 const std::vector<char>& requestBody,
+					 const Location* location,
+					 const ServerConfig* server,
+					 const std::string& defaultRoot)
+{
+	std::string requestPath = path.empty() ? "/" : path;
+	std::string queryString;
+	size_t queryPos = requestPath.find('?');
+	if (queryPos != std::string::npos)
+	{
+		queryString = requestPath.substr(queryPos + 1);
+		requestPath = requestPath.substr(0, queryPos);
+	}
+
+	// === LOCATION-LEVEL RULES ===
+	if (location)
+	{
+		const std::vector<short>& methods = location->getMethods();
+
+		if (!isMethodAllowedByLocation(method, *location))
+		{
+			error(405, server);
+			_headers["Allow"] = buildAllowHeaderFromMethods(methods);
+			setDefaultHeaders();
+			return;
+		}
+
+		if (requestBody.size() > location->getMaxBodySize())
+		{
+			error(413, server);
+			setDefaultHeaders();
+			return;
+		}
+
+		if (!location->getReturn().empty())
+		{
+			setStatus(302);
+			setHeader("Location", location->getReturn());
+			setBody("");
+			setDefaultHeaders();
+			return;
+		}
+
+		// === RESOLVE FILE PATH ===
+		std::string rel = stripLocationPrefix(requestPath, location->getPath());
+		std::string baseRoot = location->getAlias().empty()
+			? (location->getRootLocation().empty() ? defaultRoot : location->getRootLocation())
+			: location->getAlias();
+		std::string filePath = joinPath(baseRoot, rel);
+
+		// === DIRECTORY HANDLING ===
+		if (isDirectoryPath(filePath))
+		{
+			if (!location->getIndexLocation().empty())
+			{
+				filePath = joinPath(filePath, location->getIndexLocation());
+				if (!fileExists(filePath))
+				{
+					error(404, server);
+					setDefaultHeaders();
+					return;
+				}
+			}
+			else if (location->getAutoindex())
+			{
+				setStatus(200);
+				setHeader("Content-Type", "text/html");
+				setBody(buildAutoindexPage(filePath, requestPath));
+				setDefaultHeaders();
+				return;
+			}
+			else
+			{
+				error(403, server);
+				setDefaultHeaders();
+				return;
+			}
+		}
+
+		// === METHOD HANDLING WITH LOCATION ===
+		bool useCgi = isCgiByLocation(*location, filePath) || isCgiScriptPath(filePath);
+
+		if (method == "GET")
+		{
+			if (useCgi)
+			{
+				if (location->getExtensionPath().empty())
+					serveCgi(filePath, requestPath, method, queryString, requestBody);
+				else
+					executeCgiHandler(filePath, requestPath, method, queryString, requestBody, location, server);
+			}
+			else
+				serveFile(filePath);
+		}
+		else if (method == "POST")
+		{
+			if (useCgi)
+			{
+				if (location->getExtensionPath().empty())
+					serveCgi(filePath, requestPath, method, queryString, requestBody);
+				else
+					executeCgiHandler(filePath, requestPath, method, queryString, requestBody, location, server);
+			}
+			else
+			{
+				setStatus(201);
+				setHeader("Content-Type", "text/plain");
+				setBody("Created");
+			}
+		}
+		else if (method == "DELETE")
+		{
+			if (isDirectoryPath(filePath))
+				error(403, server);
+			else if (!fileExists(filePath))
+				error(404, server);
+			else if (std::remove(filePath.c_str()) == 0)
+			{
+				setStatus(200);
+				setHeader("Content-Type", "text/plain");
+				setBody("Deleted");
+			}
+			else
+				error(500, server);
+		}
+		else
+		{
+			error(405, server);
+		}
+	}
+	else
+	{
+		// === NO LOCATION RULES (FALLBACK) ===
+		std::string filePath = defaultRoot + (requestPath == "/" ? "/index.html" : requestPath);
+
+		if (method == "GET")
+		{
+			if (isCgiScriptPath(filePath))
+				serveCgi(filePath, requestPath, method, queryString, requestBody);
+			else
+				serveFile(filePath);
+		}
+		else if (method == "POST")
+		{
+			if (isCgiScriptPath(filePath))
+				serveCgi(filePath, requestPath, method, queryString, requestBody);
+			else
+			{
+				setStatus(201);
+				setHeader("Content-Type", "text/plain");
+				setBody("Created");
+			}
+		}
+		else if (method == "DELETE")
+		{
+			if (!fileExists(filePath))
+				error(404, server);
+			else if (std::remove(filePath.c_str()) == 0)
+			{
+				setStatus(200);
+				setHeader("Content-Type", "text/plain");
+				setBody("Deleted");
+			}
+			else
+				error(500, server);
+		}
+		else
+		{
+			error(405, server);
+		}
+	}
+
+	setDefaultHeaders();
+}
+
 void Response::build(const std::string& method,
 					 const std::string& path,
 					 const std::vector<char>& requestBody,
 					 const std::string& webRoot)
 {
-	std::string requestPath = path;
-	std::string queryString;
-	size_t queryPos = requestPath.find('?');
-
-	if (queryPos != std::string::npos)
-	{
-		queryString = requestPath.substr(queryPos + 1);
-		requestPath = requestPath.substr(0, queryPos);
-	}
-	if (requestPath.empty())
-		requestPath = "/";
-
-	std::string filePath = webRoot + (requestPath == "/" ? "/index.html" : requestPath);
-
-	if (method == "GET")
-	{
-		if (isCgiScriptPath(filePath))
-			serveCgi(filePath, requestPath, method, queryString, requestBody);
-		else
-			serveFile(filePath);
-	}
-	else if (method == "POST")
-	{
-		if (isCgiScriptPath(filePath))
-			serveCgi(filePath, requestPath, method, queryString, requestBody);
-		else
-		{
-			setStatus(201);
-			setHeader("Content-Type", "text/plain");
-			setBody("Created");
-		}
-	}
-	else if (method == "DELETE")
-	{
-		if (!fileExists(filePath))
-		{
-			buildErrorPage(404);
-		}
-		else if (std::remove(filePath.c_str()) == 0)
-		{
-			setStatus(200);
-			setHeader("Content-Type", "text/plain");
-			setBody("Deleted");
-		}
-		else
-		{
-			buildErrorPage(500);
-		}
-	}
-	else
-	{
-		buildErrorPage(405);
-	}
-
-	_headers["Server"]     = "Webserv/1.0";
-	_headers["Connection"] = "close";
-}
-
-void Response::build(const std::string& method,
-					 const std::string& path,
-					 const std::vector<char>& requestBody,
-					 const Location& location,
-					 const std::string& serverRoot)
-{
-	const std::vector<short>& methods = location.getMethods();
-
-// Apply location rules and build a response without server-level error pages.
-	if (!isMethodAllowedByLocation(method, location))
-	{
-		buildErrorPage(405);
-		_headers["Allow"] = buildAllowHeaderFromMethods(methods);
-		_headers["Server"] = "Webserv/1.0";
-		_headers["Connection"] = "close";
-		return;
-	}
-	if (requestBody.size() > location.getMaxBodySize())
-	{
-		buildErrorPage(413);
-		_headers["Server"] = "Webserv/1.0";
-		_headers["Connection"] = "close";
-		return;
-	}
-	if (!location.getReturn().empty())
-	{
-		setStatus(302);
-		setHeader("Location", location.getReturn());
-		setBody("");
-		_headers["Server"] = "Webserv/1.0";
-		_headers["Connection"] = "close";
-		return;
-	}
-
-	std::string requestPath = path.empty() ? "/" : path;
-	std::string queryString;
-	size_t queryPos = requestPath.find('?');
-	if (queryPos != std::string::npos)
-	{
-		queryString = requestPath.substr(queryPos + 1);
-		requestPath = requestPath.substr(0, queryPos);
-	}
-	std::string rel = stripLocationPrefix(requestPath, location.getPath());
-	std::string baseRoot = location.getAlias().empty() ? resolveRoot(location, serverRoot) : location.getAlias();
-	std::string filePath = joinPath(baseRoot, rel);
-
-	if (isDirectoryPath(filePath))
-	{
-		if (!location.getIndexLocation().empty())
-			filePath = joinPath(filePath, location.getIndexLocation());
-		else if (location.getAutoindex())
-		{
-			setStatus(200);
-			setHeader("Content-Type", "text/html");
-			setBody(buildAutoindexPage(filePath, requestPath));
-			_headers["Server"] = "Webserv/1.0";
-			_headers["Connection"] = "close";
-			return;
-		}
-		else
-		{
-			buildErrorPage(403);
-			_headers["Server"] = "Webserv/1.0";
-			_headers["Connection"] = "close";
-			return;
-		}
-	}
-
-	bool useCgi = isCgiByLocation(location, filePath) || isCgiScriptPath(filePath);
-	if (method == "GET")
-	{
-		if (useCgi)
-		{
-			if (location.getExtensionPath().empty())
-				serveCgi(filePath, requestPath, method, queryString, requestBody);
-			else
-			{
-				Request req;
-				std::string target = requestPath.empty() ? "/" : requestPath;
-				if (!queryString.empty())
-					target += "?" + queryString;
-
-				std::string raw = method + " " + target + " HTTP/1.1\r\n";
-				raw += "Host: localhost\r\n";
-				if (method == "POST" || method == "PUT" || !requestBody.empty())
-					raw += "Content-Length: " + intToStr(requestBody.size()) + "\r\n";
-				raw += "\r\n";
-				if (!requestBody.empty())
-					raw.append(requestBody.begin(), requestBody.end());
-				req.parse(raw.c_str(), raw.size());
-
-				CgiHandler cgi(filePath);
-				cgi.initEnvFromLocation(req, location);
-				short error_code = 0;
-				std::string output = cgi.execute(req, error_code);
-				if (error_code != 0)
-				{
-					buildErrorPage(error_code);
-					_headers["Server"] = "Webserv/1.0";
-					_headers["Connection"] = "close";
-					return;
-				}
-				setStatus(200);
-				applyCgiOutputHeaders(*this, output);
-			}
-		}
-		else
-			serveFile(filePath);
-	}
-	else if (method == "POST")
-	{
-		if (useCgi)
-		{
-			if (location.getExtensionPath().empty())
-				serveCgi(filePath, requestPath, method, queryString, requestBody);
-			else
-			{
-				Request req;
-				std::string target = requestPath.empty() ? "/" : requestPath;
-				if (!queryString.empty())
-					target += "?" + queryString;
-
-				std::string raw = method + " " + target + " HTTP/1.1\r\n";
-				raw += "Host: localhost\r\n";
-				if (method == "POST" || method == "PUT" || !requestBody.empty())
-					raw += "Content-Length: " + intToStr(requestBody.size()) + "\r\n";
-				raw += "\r\n";
-				if (!requestBody.empty())
-					raw.append(requestBody.begin(), requestBody.end());
-				req.parse(raw.c_str(), raw.size());
-
-				CgiHandler cgi(filePath);
-				cgi.initEnvFromLocation(req, location);
-				short error_code = 0;
-				std::string output = cgi.execute(req, error_code);
-				if (error_code != 0)
-				{
-					buildErrorPage(error_code);
-					_headers["Server"] = "Webserv/1.0";
-					_headers["Connection"] = "close";
-					return;
-				}
-				setStatus(200);
-				applyCgiOutputHeaders(*this, output);
-			}
-		}
-		else
-		{
-			setStatus(201);
-			setHeader("Content-Type", "text/plain");
-			setBody("Created");
-		}
-	}
-	else if (method == "DELETE")
-	{
-		if (isDirectoryPath(filePath))
-			buildErrorPage(403);
-		else if (!fileExists(filePath))
-			buildErrorPage(404);
-		else if (std::remove(filePath.c_str()) == 0)
-		{
-			setStatus(200);
-			setHeader("Content-Type", "text/plain");
-			setBody("Deleted");
-		}
-		else
-			buildErrorPage(500);
-	}
-	else
-		buildErrorPage(405);
-
-	_headers["Server"] = "Webserv/1.0";
-	_headers["Connection"] = "close";
-}
-
-void Response::build(const std::string& method,
-					 const std::string& path,
-					 const std::vector<char>& requestBody,
-					 const Location& location,
-					 const ServerConfig& server)
-{
-	const std::vector<short>& methods = location.getMethods();
-
-	// Apply location rules and server-level error pages.
-
-	if (!isMethodAllowedByLocation(method, location))
-	{
-		buildErrorPage(405, &server);
-		_headers["Allow"] = buildAllowHeaderFromMethods(methods);
-		_headers["Server"] = "Webserv/1.0";
-		_headers["Connection"] = "close";
-		return;
-	}
-	if (requestBody.size() > location.getMaxBodySize())
-	{
-		buildErrorPage(413, &server);
-		_headers["Server"] = "Webserv/1.0";
-		_headers["Connection"] = "close";
-		return;
-	}
-	if (!location.getReturn().empty())
-	{
-		setStatus(302);
-		setHeader("Location", location.getReturn());
-		setBody("");
-		_headers["Server"] = "Webserv/1.0";
-		_headers["Connection"] = "close";
-		return;
-	}
-
-	std::string requestPath = path.empty() ? "/" : path;
-	std::string queryString;
-	size_t queryPos = requestPath.find('?');
-	if (queryPos != std::string::npos)
-	{
-		queryString = requestPath.substr(queryPos + 1);
-		requestPath = requestPath.substr(0, queryPos);
-	}
-	std::string rel = stripLocationPrefix(requestPath, location.getPath());
-	std::string baseRoot = location.getAlias().empty() ? resolveRoot(location, server.getRoot()) : location.getAlias();
-	std::string filePath = joinPath(baseRoot, rel);
-
-	if (isDirectoryPath(filePath))
-	{
-		if (!location.getIndexLocation().empty())
-			filePath = joinPath(filePath, location.getIndexLocation());
-		else if (location.getAutoindex())
-		{
-			setStatus(200);
-			setHeader("Content-Type", "text/html");
-			setBody(buildAutoindexPage(filePath, requestPath));
-			_headers["Server"] = "Webserv/1.0";
-			_headers["Connection"] = "close";
-			return;
-		}
-		else
-		{
-			buildErrorPage(403, &server);
-			_headers["Server"] = "Webserv/1.0";
-			_headers["Connection"] = "close";
-			return;
-		}
-	}
-
-	bool useCgi = isCgiByLocation(location, filePath) || isCgiScriptPath(filePath);
-	if (method == "GET")
-	{
-		if (useCgi)
-		{
-			if (location.getExtensionPath().empty())
-				serveCgi(filePath, requestPath, method, queryString, requestBody);
-			else
-			{
-				Request req;
-				std::string target = requestPath.empty() ? "/" : requestPath;
-				if (!queryString.empty())
-					target += "?" + queryString;
-
-				std::string raw = method + " " + target + " HTTP/1.1\r\n";
-				raw += "Host: localhost\r\n";
-				if (method == "POST" || method == "PUT" || !requestBody.empty())
-					raw += "Content-Length: " + intToStr(requestBody.size()) + "\r\n";
-				raw += "\r\n";
-				if (!requestBody.empty())
-					raw.append(requestBody.begin(), requestBody.end());
-				req.parse(raw.c_str(), raw.size());
-
-				CgiHandler cgi(filePath);
-				cgi.initEnvFromLocation(req, location);
-				short error_code = 0;
-				std::string output = cgi.execute(req, error_code);
-				if (error_code != 0)
-				{
-					buildErrorPage(error_code, &server);
-					_headers["Server"] = "Webserv/1.0";
-					_headers["Connection"] = "close";
-					return;
-				}
-				setStatus(200);
-				applyCgiOutputHeaders(*this, output);
-			}
-		}
-		else
-			serveFile(filePath);
-	}
-	else if (method == "POST")
-	{
-		if (useCgi)
-		{
-			if (location.getExtensionPath().empty())
-				serveCgi(filePath, requestPath, method, queryString, requestBody);
-			else
-			{
-				Request req;
-				std::string target = requestPath.empty() ? "/" : requestPath;
-				if (!queryString.empty())
-					target += "?" + queryString;
-
-				std::string raw = method + " " + target + " HTTP/1.1\r\n";
-				raw += "Host: localhost\r\n";
-				if (method == "POST" || method == "PUT" || !requestBody.empty())
-					raw += "Content-Length: " + intToStr(requestBody.size()) + "\r\n";
-				raw += "\r\n";
-				if (!requestBody.empty())
-					raw.append(requestBody.begin(), requestBody.end());
-				req.parse(raw.c_str(), raw.size());
-
-				CgiHandler cgi(filePath);
-				cgi.initEnvFromLocation(req, location);
-				short error_code = 0;
-				std::string output = cgi.execute(req, error_code);
-				if (error_code != 0)
-				{
-					buildErrorPage(error_code, &server);
-					_headers["Server"] = "Webserv/1.0";
-					_headers["Connection"] = "close";
-					return;
-				}
-				setStatus(200);
-				applyCgiOutputHeaders(*this, output);
-			}
-		}
-		else
-		{
-			setStatus(201);
-			setHeader("Content-Type", "text/plain");
-			setBody("Created");
-		}
-	}
-	else if (method == "DELETE")
-	{
-		if (isDirectoryPath(filePath))
-			buildErrorPage(403, &server);
-		else if (!fileExists(filePath))
-			buildErrorPage(404, &server);
-		else if (std::remove(filePath.c_str()) == 0)
-		{
-			setStatus(200);
-			setHeader("Content-Type", "text/plain");
-			setBody("Deleted");
-		}
-		else
-			buildErrorPage(500, &server);
-	}
-	else
-		buildErrorPage(405, &server);
-
-	_headers["Server"] = "Webserv/1.0";
-	_headers["Connection"] = "close";
+	build(method, path, requestBody, NULL, NULL, webRoot);
 }
 
 void Response::serveFile(const std::string& filePath)
 {
 	if (!fileExists(filePath))
 	{
-		buildErrorPage(404);
+		buildErrorPage(404, NULL);
 		return;
 	}
 
 	std::string content = readFile(filePath);
 	if (content.empty())
 	{
-		buildErrorPage(500);
+		buildErrorPage(500, NULL);
 		return;
 	}
 
@@ -661,6 +491,12 @@ void Response::serveCgi(const std::string& scriptPath,
 						const std::string& queryString,
 						const std::vector<char>& requestBody)
 {
+	if (!fileExists(scriptPath))
+	{
+		buildErrorPage(404, NULL);
+		return;
+	}
+
 	Request req;
 	std::string target = requestPath.empty() ? "/" : requestPath;
 	if (!queryString.empty())
@@ -674,11 +510,6 @@ void Response::serveCgi(const std::string& scriptPath,
 	if (!requestBody.empty())
 		raw.append(requestBody.begin(), requestBody.end());
 	req.parse(raw.c_str(), raw.size());
-    if (!fileExists(scriptPath))
-    {
-        buildErrorPage(404);
-        return;
-    }
 
     CgiHandler cgi(scriptPath);
 	cgi.initEnvBasic(req, scriptPath, requestPath.empty() ? "/" : requestPath, queryString);
@@ -688,7 +519,7 @@ void Response::serveCgi(const std::string& scriptPath,
 
     if (error_code != 0)
     {
-        buildErrorPage(error_code);
+        buildErrorPage(error_code, NULL);
         return;
     }
 
@@ -736,11 +567,6 @@ void Response::setBody(const std::vector<char>& body)
 int                Response::getStatusCode()    const { return _statusCode; }
 std::string        Response::getStatusMessage() const { return _statusMessage; }
 const std::string& Response::getBody()          const { return _body; }
-
-void Response::buildErrorPage(int code)
-{
-	buildErrorPage(code, NULL);
-}
 
 void Response::buildErrorPage(int code, const ServerConfig* server)
 {

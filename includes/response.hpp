@@ -18,24 +18,19 @@ class Response
 		Response(int statusCode, const std::string& body,
 				 const std::string& contentType);
 
+		// Unified build method with optional location and server.
 		void build(const std::string& method,
 				   const std::string& path,
 				   const std::vector<char>& requestBody,
-				   const std::string& webRoot = "./www");
+				   const Location* location = NULL,
+				   const ServerConfig* server = NULL,
+				   const std::string& defaultRoot = "./www");
 
-		// Build using location rules with a server root fallback.
+		// Convenience overload for simple cases (no location/server rules).
 		void build(const std::string& method,
 				   const std::string& path,
 				   const std::vector<char>& requestBody,
-				   const Location& location,
-				   const std::string& serverRoot);
-
-		// Build using full server config (error pages, root, CGI mapping).
-		void build(const std::string& method,
-				   const std::string& path,
-				   const std::vector<char>& requestBody,
-				   const Location& location,
-				   const ServerConfig& server);
+				   const std::string& webRoot);
 
 		void serveFile(const std::string& filePath);
 		void serveCgi(const std::string& scriptPath,
@@ -61,8 +56,17 @@ class Response
 		std::map<std::string, std::string>  _headers;
 		std::string                         _body;
 
-		void buildErrorPage(int code);
+		// Helper methods (no duplication)
+		void setDefaultHeaders();
+		void error(int code, const ServerConfig* server);
 		void buildErrorPage(int code, const ServerConfig* server);
+		bool executeCgiHandler(const std::string& filePath,
+							   const std::string& requestPath,
+							   const std::string& method,
+							   const std::string& queryString,
+							   const std::vector<char>& requestBody,
+							   const Location* location,
+							   const ServerConfig* server);
 
 		static std::string statusMessage(int code);
 		static std::string mimeType(const std::string& path);
