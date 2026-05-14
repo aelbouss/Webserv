@@ -238,21 +238,27 @@ bool Response::executeCgiHandler(const std::string& filePath,
 								  const std::string& queryString,
 								  const std::vector<char>& requestBody,
 								  const Location* location,
-								  const ServerConfig* server)
+						  const ServerConfig* server,
+							  Request* request)
 {
-	Request req;
-	std::string target = requestPath.empty() ? "/" : requestPath;
-	if (!queryString.empty())
-		target += "?" + queryString;
+	Request localReq;
+	Request* reqPtr = request;
+	if (!reqPtr)
+	{
+		std::string target = requestPath.empty() ? "/" : requestPath;
+		if (!queryString.empty())
+			target += "?" + queryString;
 
-	std::string raw = method + " " + target + " HTTP/1.1\r\n";
-	raw += "Host: localhost\r\n";
-	if (method == "POST" || method == "PUT" || !requestBody.empty())
-		raw += "Content-Length: " + intToStr(requestBody.size()) + "\r\n";
-	raw += "\r\n";
-	if (!requestBody.empty())
-		raw.append(requestBody.begin(), requestBody.end());
-	req.parse(raw.c_str(), raw.size());
+		std::string raw = method + " " + target + " HTTP/1.1\r\n";
+		raw += "Host: localhost\r\n";
+		if (method == "POST" || method == "PUT" || !requestBody.empty())
+			raw += "Content-Length: " + intToStr(requestBody.size()) + "\r\n";
+		raw += "\r\n";
+		if (!requestBody.empty())
+			raw.append(requestBody.begin(), requestBody.end());
+		localReq.parse(raw.c_str(), raw.size());
+		reqPtr = &localReq;
+	}
 
 	if (!fileExists(filePath))
 	{
@@ -262,15 +268,20 @@ bool Response::executeCgiHandler(const std::string& filePath,
 
 	CgiHandler cgi(filePath);
 	if (location)
-		cgi.initEnvFromLocation(req, *location);
+		cgi.initEnvFromLocation(*reqPtr, *location);
 	else
-		cgi.initEnvBasic(req, filePath, requestPath.empty() ? "/" : requestPath, queryString);
+		cgi.initEnvBasic(*reqPtr, filePath, requestPath.empty() ? "/" : requestPath, queryString);
 
 	short error_code = 0;
-	std::string output = cgi.execute(req, error_code);
+	std::string output = cgi.execute(*reqPtr, error_code);
 	if (error_code != 0)
 	{
 		error(error_code, server);
+		return false;
+	}
+	if (output.empty())
+	{
+		error(500, server);
 		return false;
 	}
 
@@ -283,8 +294,9 @@ void Response::build(const std::string& method,
 					 const std::string& path,
 					 const std::vector<char>& requestBody,
 					 const Location* location,
-					 const ServerConfig* server,
-					 const std::string& defaultRoot)
+				 const ServerConfig* server,
+					 const std::string& defaultRoot,
+					 Request* request)
 {
 	std::string requestPath = path.empty() ? "/" : path;
 	std::string queryString;
@@ -294,6 +306,10 @@ void Response::build(const std::string& method,
 		queryString = requestPath.substr(queryPos + 1);
 		requestPath = requestPath.substr(0, queryPos);
 	}
+
+	std::string root = defaultRoot;
+	if (server && !server->getRoot().empty())
+		root = server->getRoot();
 
 	// === LOCATION-LEVEL RULES ===
 	if (location)
@@ -327,7 +343,7 @@ void Response::build(const std::string& method,
 		// === RESOLVE FILE PATH ===
 		std::string rel = stripLocationPrefix(requestPath, location->getPath());
 		std::string baseRoot = location->getAlias().empty()
-			? (location->getRootLocation().empty() ? defaultRoot : location->getRootLocation())
+			? (location->getRootLocation().empty() ? root : location->getRootLocation())
 			: location->getAlias();
 		std::string filePath = joinPath(baseRoot, rel);
 
@@ -368,9 +384,9 @@ void Response::build(const std::string& method,
 			if (useCgi)
 			{
 				if (location->getExtensionPath().empty())
-					serveCgi(filePath, requestPath, method, queryString, requestBody);
+					serveCgi(filePath, requestPath, method, queryString, requestBody, request);
 				else
-					executeCgiHandler(filePath, requestPath, method, queryString, requestBody, location, server);
+					executeCgiHandler(filePath, requestPath, method, queryString, requestBody, location, server, request);
 			}
 			else
 				serveFile(filePath);
@@ -380,9 +396,9 @@ void Response::build(const std::string& method,
 			if (useCgi)
 			{
 				if (location->getExtensionPath().empty())
-					serveCgi(filePath, requestPath, method, queryString, requestBody);
+					serveCgi(filePath, requestPath, method, queryString, requestBody, request);
 				else
-					executeCgiHandler(filePath, requestPath, method, queryString, requestBody, location, server);
+					executeCgiHandler(filePath, requestPath, method, queryString, requestBody, location, server, request);
 			}
 			else
 			{
@@ -414,19 +430,25 @@ void Response::build(const std::string& method,
 	else
 	{
 		// === NO LOCATION RULES (FALLBACK) ===
-		std::string filePath = defaultRoot + (requestPath == "/" ? "/index.html" : requestPath);
+		if (server && requestBody.size() > server->getClientMaxBodySize())
+		{
+			error(413, server);
+			setDefaultHeaders();
+			return;
+		}
+		std::string filePath = root + (requestPath == "/" ? "/index.html" : requestPath);
 
 		if (method == "GET")
 		{
 			if (isCgiScriptPath(filePath))
-				serveCgi(filePath, requestPath, method, queryString, requestBody);
+				serveCgi(filePath, requestPath, method, queryString, requestBody, request);
 			else
 				serveFile(filePath);
 		}
 		else if (method == "POST")
 		{
 			if (isCgiScriptPath(filePath))
-				serveCgi(filePath, requestPath, method, queryString, requestBody);
+				serveCgi(filePath, requestPath, method, queryString, requestBody, request);
 			else
 			{
 				setStatus(201);
@@ -461,7 +483,7 @@ void Response::build(const std::string& method,
 					 const std::vector<char>& requestBody,
 					 const std::string& webRoot)
 {
-	build(method, path, requestBody, NULL, NULL, webRoot);
+	build(method, path, requestBody, NULL, NULL, webRoot, NULL);
 }
 
 void Response::serveFile(const std::string& filePath)
@@ -489,42 +511,10 @@ void Response::serveCgi(const std::string& scriptPath,
 						const std::string& requestPath,
 						const std::string& method,
 						const std::string& queryString,
-						const std::vector<char>& requestBody)
+						const std::vector<char>& requestBody,
+						Request* request)
 {
-	if (!fileExists(scriptPath))
-	{
-		buildErrorPage(404, NULL);
-		return;
-	}
-
-	Request req;
-	std::string target = requestPath.empty() ? "/" : requestPath;
-	if (!queryString.empty())
-		target += "?" + queryString;
-
-	std::string raw = method + " " + target + " HTTP/1.1\r\n";
-	raw += "Host: localhost\r\n";
-	if (method == "POST" || method == "PUT" || !requestBody.empty())
-		raw += "Content-Length: " + intToStr(requestBody.size()) + "\r\n";
-	raw += "\r\n";
-	if (!requestBody.empty())
-		raw.append(requestBody.begin(), requestBody.end());
-	req.parse(raw.c_str(), raw.size());
-
-    CgiHandler cgi(scriptPath);
-	cgi.initEnvBasic(req, scriptPath, requestPath.empty() ? "/" : requestPath, queryString);
-
-    short error_code = 0;
-    std::string output = cgi.execute(req, error_code);
-
-    if (error_code != 0)
-    {
-        buildErrorPage(error_code, NULL);
-        return;
-    }
-
-    setStatus(200);
-    applyCgiOutputHeaders(*this, output);
+	executeCgiHandler(scriptPath, requestPath, method, queryString, requestBody, NULL, NULL, request);
 }
 
 std::string Response::toString() const

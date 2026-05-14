@@ -30,9 +30,14 @@ class	multiplexing
 		std::vector <struct pollfd> fds_list;
 		std::vector <int> master_sockets ;
 		std::vector <ServerConfig> server_configs;
+		std::vector< std::vector<size_t> > server_groups;
 		std::map <int, client> client_data; // to just distinguish master vs client sockets .
 		std::map <int, size_t> client_server_index;
 		size_t	master_socket_index(int fd) const;
+		const ServerConfig* select_server_for_request(
+			const Request& request,
+			size_t socket_idx
+		) const;
 		void	build_and_queue_response(int fd);
 		void	send_pending_response(int fd);
 	public :
@@ -42,6 +47,7 @@ class	multiplexing
 		~multiplexing();
 		void	set_master_sockets(server_infra& infos);
 		void	set_server_configs(const std::vector<ServerConfig>& servers);
+		void	set_server_groups(const std::vector< std::vector<size_t> >& groups);
 		void	add_new_client(int fd);
 		void	remove_client(int fd);
 		void	take_master_sockets_snapshot(server_infra& infos);

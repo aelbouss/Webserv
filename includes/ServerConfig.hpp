@@ -54,11 +54,11 @@ class ServerConfig
 		// Configured error page mapping by status code.
 		const std::map<short, std::string> &getErrorPages() const;
 		const std::vector<Location> &getLocations();
-		const size_t &getClientMaxBodySize();
+		const size_t &getClientMaxBodySize() const;
 		const unsigned short &getPort();
-		const in_addr_t &getHost();
+		const in_addr_t &getHost() const;
 		const bool &getAutoindex();
-		const std::string &getServerName();
+		const std::string &getServerName() const;
 		const std::string &getIndex();
 		const std::vector<Location>::iterator getLocationKey(std::string key);
 		const std::string &getPathErrorPage(short key);

@@ -1,6 +1,24 @@
 # include "../includes/multiplexing.hpp"
 # include "../includes/response.hpp"
 
+static std::string strip_port_from_host(const std::string& host)
+{
+	size_t colon = host.find(':');
+	if (colon == std::string::npos)
+		return host;
+	return host.substr(0, colon);
+}
+
+static std::string addr_to_string(in_addr_t addr)
+{
+	struct in_addr in;
+	char ipbuf[INET_ADDRSTRLEN];
+
+	in.s_addr = addr;
+	const char *ipstr = inet_ntop(AF_INET, &in, ipbuf, sizeof(ipbuf));
+	return ipstr ? std::string(ipstr) : std::string();
+}
+
 static void erase_client_state(std::vector<struct pollfd>& fds_list,
 								   std::map<int, client>& client_data,
 								   std::map<int, size_t>& client_server_index,
@@ -49,6 +67,54 @@ static void erase_client_state(std::vector<struct pollfd>& fds_list,
 			server_configs = servers;
 		}
 
+		void	multiplexing::set_server_groups(const std::vector< std::vector<size_t> >& groups)
+		{
+			server_groups = groups;
+		}
+
+const ServerConfig* multiplexing::select_server_for_request(
+    const Request& request,
+    size_t socket_idx
+) const
+{
+    if (server_groups.empty())
+    {
+        if (socket_idx < server_configs.size())
+            return &server_configs[socket_idx];
+        return NULL;
+    }
+
+    if (socket_idx >= server_groups.size() || server_groups[socket_idx].empty())
+        return NULL;
+
+    const std::vector<size_t>& group = server_groups[socket_idx];
+    std::string hostHeader = strip_port_from_host(request.getHeader("host"));
+
+    if (!hostHeader.empty())
+    {
+        for (size_t i = 0; i < group.size(); ++i)
+        {
+            const ServerConfig& server = server_configs[group[i]];
+            if (!server.getServerName().empty() &&
+                server.getServerName() == hostHeader)
+                return &server;
+        }
+
+        for (size_t i = 0; i < group.size(); ++i)
+        {
+            const ServerConfig& server = server_configs[group[i]];
+            std::string ip = addr_to_string(server.getHost());
+
+            if (!ip.empty() && hostHeader == ip)
+                return &server;
+
+            if (hostHeader == "localhost" && ip == "127.0.0.1")
+                return &server;
+        }
+    }
+
+    return &server_configs[group[0]];
+}
 		/*
 		 * setup the master sockets to be ready to accept new connections
 		 * and  push them to the  list to be watched .
@@ -151,12 +217,23 @@ static void erase_client_state(std::vector<struct pollfd>& fds_list,
 
 			Response response;
 			std::map<int, size_t>::iterator server_idx = client_server_index.find(fd);
-			if (server_idx != client_server_index.end() && server_idx->second < server_configs.size())
+			if (server_idx != client_server_index.end())
 			{
-				ServerConfig& server = server_configs[server_idx->second];
-				const Location *location = server.matchLocation(client_idx->second.get_request().getPath());
-				response.build(client_idx->second.get_request().getMethodStr(), requestPath, 
-							   client_idx->second.get_request().getBody(), location, &server);
+				const Request& request = client_idx->second.get_request();
+				const ServerConfig* server = select_server_for_request(request, server_idx->second);
+				if (server)
+				{
+					const Location *location = server->matchLocation(request.getPath());
+					response.build(request.getMethodStr(), requestPath,
+							   request.getBody(), location, server, server->getRoot(),
+							   &client_idx->second.get_request());
+				}
+				else
+				{
+					response.setStatus(500);
+					response.setHeader("Content-Type", "text/plain");
+					response.setBody("Internal Server Error");
+				}
 			}
 			else
 			{

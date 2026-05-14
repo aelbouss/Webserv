@@ -229,6 +229,8 @@ void ConfigParser::createServer(std::string &config, ServerConfig &server)
 				std::string port = listen_param.substr(colon_pos + 1);
 				if (server.getHost())
 					throw  ErrorException("Host is duplicated");
+				if (host.find(';') == std::string::npos)
+					host += ";";
 				server.setHost(host);
 				server.setPort(port);
 			}

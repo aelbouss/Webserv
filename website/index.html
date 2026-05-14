@@ -230,6 +230,33 @@
       font-family: 'Courier New', monospace; font-size: 0.8rem; color: var(--muted);
     }
     .lab-url span { color: var(--accent); font-weight: 600; }
+    .lab-upload {
+      margin-bottom: 14px;
+    }
+    .lab-upload label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .lab-file {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.22);
+      color: var(--muted);
+      font: inherit;
+    }
+    .lab-hint {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.78rem;
+      line-height: 1.5;
+    }
     .lab-btns { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
     .lab-btn {
       display: inline-flex; align-items: center; gap: 7px;
@@ -403,6 +430,32 @@
       </div>
     </div>
 
+    <!-- POST static -->
+    <div class="lab-card">
+      <div class="lab-card-header">
+        <div>
+          <span class="method-badge badge-post">POST</span>
+        </div>
+        <div>
+          <h3>Static File Upload</h3>
+          <p>Send a photo or file without going through CGI</p>
+        </div>
+      </div>
+      <div class="lab-card-body">
+        <div class="lab-url"><span>POST</span> /hello.txt</div>
+        <div class="lab-upload">
+          <label for="post-static-file">Choose photo or file</label>
+          <input class="lab-file" type="file" id="post-static-file" accept="image/*,.txt,.pdf,.json,.csv,.png,.jpg,.jpeg,.gif,.webp">
+          <p class="lab-hint">This sends a real multipart/form-data POST to the static route. The server should answer 201 Created.</p>
+        </div>
+        <div class="lab-btns">
+          <button class="lab-btn lab-btn-post" onclick="runTest('post-static')">⚡ Run POST</button>
+          <a class="lab-btn lab-btn-open" href="/hello.txt" target="_blank">↗ Open</a>
+        </div>
+        <div class="lab-output" id="out-post-static">Waiting… choose a photo or file, then click Run POST.</div>
+      </div>
+    </div>
+
     <!-- DELETE -->
     <div class="lab-card">
       <div class="lab-card-header">
@@ -453,6 +506,7 @@
     const btnMap = {
       'get-static':  document.querySelector('[onclick="runTest(\'get-static\')"]'),
       'post-cgi':    document.querySelector('[onclick="runTest(\'post-cgi\')"]'),
+      'post-static': document.querySelector('[onclick="runTest(\'post-static\')"]'),
       'delete-file': document.querySelector('[onclick="runTest(\'delete-file\')"]'),
       'cgi-get':     document.querySelector('[onclick="runTest(\'cgi-get\')"]'),
     };
@@ -481,6 +535,31 @@
         body = await res.text();
         // Strip HTML tags for clean output
         body = body.replace(/<[^>]+>/g, '').replace(/\n{3,}/g, '\n\n').trim();
+      } else if (id === 'post-static') {
+        const fileInput = document.getElementById('post-static-file');
+        const file = fileInput && fileInput.files ? fileInput.files[0] : null;
+        if (!file) {
+          outEl.className = 'lab-output fail';
+          outEl.innerHTML = '<span class="status-line">✗ Missing file</span>' + sanitize('Choose a photo or file before sending the POST request.');
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('upload', file, file.name);
+        formData.append('note', 'Uploaded from the Nexus server test lab');
+
+        res = await fetch('/hello.txt', {
+          method: 'POST',
+          body: formData
+        });
+        body = await res.text();
+        body = [
+          'Uploaded file: ' + file.name,
+          'Content type: ' + (file.type || 'unknown'),
+          'Size: ' + file.size + ' bytes',
+          '',
+          body || '(empty body)'
+        ].join('\n');
       } else if (id === 'delete-file') {
         res = await fetch('/delete-target.txt', { method: 'DELETE' });
         body = await res.text();

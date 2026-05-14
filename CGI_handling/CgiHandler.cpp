@@ -183,7 +183,7 @@ void CgiHandler::initEnvFromLocation(Request& req, const Location& location)
 	this->_env["REQUEST_METHOD"] = req.getMethodStr();
 	this->_env["HTTP_COOKIE"] = req.getHeader("cookie");
 	this->_env["DOCUMENT_ROOT"] = location.getRootLocation();
-	this->_env["REQUEST_URI"] = req.getPath() + req.getQuery();
+	this->_env["REQUEST_URI"] = req.getPath() + (req.getQuery().empty() ? "" : "?" + req.getQuery());
 	this->_env["SERVER_PROTOCOL"] = "HTTP/1.1";
 	this->_env["REDIRECT_STATUS"] = "200";
 	this->_env["SERVER_SOFTWARE"] = "AMANIX";
@@ -287,7 +287,7 @@ void CgiHandler::initEnv(Request& req, const std::vector<Location>::iterator it_
     this->_env["REQUEST_METHOD"] = req.getMethodStr();
     this->_env["HTTP_COOKIE"] = req.getHeader("cookie");
     this->_env["DOCUMENT_ROOT"] = it_loc->getRootLocation();
-	this->_env["REQUEST_URI"] = req.getPath() + req.getQuery();
+	this->_env["REQUEST_URI"] = req.getPath() + (req.getQuery().empty() ? "" : "?" + req.getQuery());
     this->_env["SERVER_PROTOCOL"] = "HTTP/1.1";
     this->_env["REDIRECT_STATUS"] = "200";
 	this->_env["SERVER_SOFTWARE"] = "AMANIX";

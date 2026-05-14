@@ -24,7 +24,8 @@ class Response
 				   const std::vector<char>& requestBody,
 				   const Location* location = NULL,
 				   const ServerConfig* server = NULL,
-				   const std::string& defaultRoot = "./www");
+				   const std::string& defaultRoot = "./www",
+				   Request* request = NULL);
 
 		// Convenience overload for simple cases (no location/server rules).
 		void build(const std::string& method,
@@ -37,7 +38,8 @@ class Response
 					  const std::string& requestPath,
 					  const std::string& method,
 					  const std::string& queryString,
-					  const std::vector<char>& requestBody);
+				  const std::vector<char>& requestBody,
+				  Request* request = NULL);
 
 		void setStatus(int code);
 		void setHeader(const std::string& key, const std::string& value);
@@ -66,7 +68,8 @@ class Response
 							   const std::string& queryString,
 							   const std::vector<char>& requestBody,
 							   const Location* location,
-							   const ServerConfig* server);
+						   const ServerConfig* server,
+						   Request* request);
 
 		static std::string statusMessage(int code);
 		static std::string mimeType(const std::string& path);

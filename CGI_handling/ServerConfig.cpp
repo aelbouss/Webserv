@@ -484,7 +484,7 @@ bool ServerConfig::isValidErrorPages()
 }
 
 // Accessors
-const std::string &ServerConfig::getServerName()
+const std::string &ServerConfig::getServerName() const
 {
 	return (this->_server_name);
 }
@@ -500,7 +500,7 @@ const bool &ServerConfig::getAutoindex()
 	return (this->_autoindex);
 }
 
-const in_addr_t &ServerConfig::getHost()
+const in_addr_t &ServerConfig::getHost() const
 {
 	return (this->_host);
 }
@@ -510,7 +510,7 @@ const unsigned short &ServerConfig::getPort()
 	return (this->_port);
 }
 
-const size_t &ServerConfig::getClientMaxBodySize()
+const size_t &ServerConfig::getClientMaxBodySize() const
 {
 	return (this->_client_max_body_size);
 }
