@@ -24,7 +24,8 @@ class Response
 				   const std::vector<char>& requestBody,
 				   const Location* location = NULL,
 				   const ServerConfig* server = NULL,
-				   const std::string& defaultRoot = "./www");
+				   const std::string& defaultRoot = "./www",
+				   const Request* request = NULL);
 
 		// Convenience overload for simple cases (no location/server rules).
 		void build(const std::string& method,
@@ -67,10 +68,16 @@ class Response
 							   const std::vector<char>& requestBody,
 							   const Location* location,
 							   const ServerConfig* server);
-
 		static std::string statusMessage(int code);
 		static std::string mimeType(const std::string& path);
 		static bool        fileExists(const std::string& path);
 		static std::string readFile(const std::string& path);
 		static std::string intToStr(size_t n);
+		static std::string sanitizeFilename(const std::string& name);
+		static bool        writeFile(const std::string& path, const std::vector<char>& data);
+		static bool        extractMultipartFile(const Request& request, std::string& filename, std::vector<char>& data);
+		int                handleUploadPost(const std::string& requestPath,
+								   const std::vector<char>& requestBody,
+								   const Location& location,
+								   const Request* request);
 };

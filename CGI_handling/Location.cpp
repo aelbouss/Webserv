@@ -26,6 +26,7 @@ Location::Location(const Location &other)
 	this->_index = other._index;
 	this->_cgi_path = other._cgi_path;
 	this->_cgi_ext = other._cgi_ext;
+	this->_upload_store = other._upload_store;
 	this->_return = other._return;
 	this->_alias = other._alias;
     this->_methods = other._methods;
@@ -43,6 +44,7 @@ Location &Location::operator=(const Location &rhs)
 		this->_index = rhs._index;
 		this->_cgi_path = rhs._cgi_path;
 		this->_cgi_ext = rhs._cgi_ext;
+		this->_upload_store = rhs._upload_store;
 		this->_return = rhs._return;
 		this->_alias = rhs._alias;
 		this->_methods = rhs._methods;
@@ -125,6 +127,15 @@ void Location::setCgiExtension(std::vector<std::string> extension)
 	this->_cgi_ext = extension;
 }
 
+void Location::setUploadStore(std::string paramet)
+{
+	if (ConfigFile::getTypePath(paramet) != 2)
+		throw ServerConfig::ErrorException("upload_store of location");
+	if (!paramet.empty() && paramet[paramet.size() - 1] != '/')
+		paramet += '/';
+	this->_upload_store = paramet;
+}
+
 void Location::setMaxBodySize(std::string paramet)
 {
 	unsigned long body_size = 0;
@@ -176,6 +187,11 @@ const std::vector<std::string> &Location::getCgiPath() const
 const std::vector<std::string> &Location::getCgiExtension() const
 {
 	return (this->_cgi_ext);
+}
+
+const std::string &Location::getUploadStore() const
+{
+	return (this->_upload_store);
 }
 
 const bool &Location::getAutoindex() const

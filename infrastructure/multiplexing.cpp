@@ -156,7 +156,8 @@ static void erase_client_state(std::vector<struct pollfd>& fds_list,
 				ServerConfig& server = server_configs[server_idx->second];
 				const Location *location = server.matchLocation(client_idx->second.get_request().getPath());
 				response.build(client_idx->second.get_request().getMethodStr(), requestPath, 
-							   client_idx->second.get_request().getBody(), location, &server);
+							   client_idx->second.get_request().getBody(), location, &server,
+							   server.getRoot(), &client_idx->second.get_request());
 			}
 			else
 			{
