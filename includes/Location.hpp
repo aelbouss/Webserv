@@ -19,6 +19,7 @@ class Location
 		std::string					_alias;
 		std::vector<std::string>	_cgi_path;
 		std::vector<std::string>	_cgi_ext;
+		std::string					_upload_store;
 		unsigned long				_client_max_body_size;
 
 	public:
@@ -38,6 +39,7 @@ class Location
 		void setAlias(std::string paramet);
 		void setCgiPath(std::vector<std::string> path);
 		void setCgiExtension(std::vector<std::string> extension);
+		void setUploadStore(std::string paramet);
 		void setMaxBodySize(std::string paramet);
 		void setMaxBodySize(unsigned long paramet);
 
@@ -50,6 +52,7 @@ class Location
 		const std::string &getAlias() const;
 		const std::vector<std::string> &getCgiPath() const;
 		const std::vector<std::string> &getCgiExtension() const;
+		const std::string &getUploadStore() const;
 		const std::map<std::string, std::string> &getExtensionPath() const;
 		const unsigned long &getMaxBodySize() const;
 

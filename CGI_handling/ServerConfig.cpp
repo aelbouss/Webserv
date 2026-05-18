@@ -310,6 +310,28 @@ void ServerConfig::setLocation(std::string path, std::vector<std::string> parame
 			checkToken(paramet[++i]);
 			new_location.setAlias(paramet[i]);
 		}
+		else if (paramet[i] == "upload_store" && (i + 1) < paramet.size())
+		{
+			if (!new_location.getUploadStore().empty())
+				throw ErrorException("upload_store of location is duplicated");
+			checkToken(paramet[++i]);
+			std::string uploadStore = paramet[i];
+			if (ConfigFile::getTypePath(uploadStore) != 2)
+			{
+				if (!uploadStore.empty() && uploadStore[0] != '/')
+				{
+					if (!this->_root.empty() && this->_root[this->_root.size() - 1] != '/')
+						uploadStore = this->_root + "/" + uploadStore;
+					else
+						uploadStore = this->_root + uploadStore;
+				}
+			}
+			if (!uploadStore.empty() && uploadStore[uploadStore.size() - 1] != '/')
+				uploadStore += '/';
+			if (ConfigFile::getTypePath(uploadStore) != 2)
+				throw ErrorException("Wrong syntax: upload_store");
+			new_location.setUploadStore(uploadStore);
+		}
 		else if (paramet[i] == "cgi_ext" && (i + 1) < paramet.size())
 		{
 			std::vector<std::string> extension;
