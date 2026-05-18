@@ -5,6 +5,9 @@
 #include <fstream>
 #include <cstdlib>
 #include <cstdio>
+#include <cctype>
+#include <algorithm>
+#include <fcntl.h>
 #include <unistd.h>
 #include <iostream>
 #include <sys/stat.h>
@@ -150,6 +153,407 @@ static std::string trimCopy(const std::string& s)
 	return s.substr(begin, end - begin);
 }
 
+static std::string toLowerCopy(const std::string& value)
+{
+	std::string out = value;
+
+	for (size_t i = 0; i < out.size(); ++i)
+		out[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(out[i])));
+	return out;
+}
+
+static std::string basenameCopy(const std::string& path)
+{
+	size_t slash = path.find_last_of('/');
+	std::string name = (slash == std::string::npos) ? path : path.substr(slash + 1);
+	slash = name.find_last_of('\\');
+	if (slash != std::string::npos)
+		name = name.substr(slash + 1);
+	return name;
+}
+
+static std::string addSuffixToFilename(const std::string& filename, size_t suffix)
+{
+	if (suffix == 0)
+		return filename;
+	size_t dot = filename.find_last_of('.');
+	std::ostringstream oss;
+	if (dot == std::string::npos || dot == 0)
+		oss << filename << '_' << suffix;
+	else
+		oss << filename.substr(0, dot) << '_' << suffix << filename.substr(dot);
+	return oss.str();
+}
+
+struct UploadPart
+{
+	std::string filename;
+	std::vector<char> data;
+};
+
+static std::string vectorSliceToString(const std::vector<char>& data, size_t start, size_t end)
+{
+	if (start >= data.size() || start >= end)
+		return "";
+	if (end > data.size())
+		end = data.size();
+	return std::string(data.begin() + start, data.begin() + end);
+}
+
+static bool findSequence(const std::vector<char>& haystack,
+						 const std::vector<char>& needle,
+						 size_t from,
+						 size_t& position)
+{
+	if (needle.empty() || from > haystack.size())
+		return false;
+	std::vector<char>::const_iterator begin = haystack.begin() + from;
+	std::vector<char>::const_iterator it = std::search(begin, haystack.end(), needle.begin(), needle.end());
+	if (it == haystack.end())
+		return false;
+	position = static_cast<size_t>(it - haystack.begin());
+	return true;
+}
+
+static bool parseBoundaryParameter(const std::string& contentType, std::string& boundary)
+{
+	std::string lower = toLowerCopy(contentType);
+	size_t pos = lower.find("boundary=");
+	if (pos == std::string::npos)
+		return false;
+	pos += 9;
+	while (pos < contentType.size() && (contentType[pos] == ' ' || contentType[pos] == '\t'))
+		++pos;
+	if (pos >= contentType.size())
+		return false;
+	if (contentType[pos] == '"')
+	{
+		size_t end = contentType.find('"', pos + 1);
+		if (end == std::string::npos)
+			return false;
+		boundary = contentType.substr(pos + 1, end - pos - 1);
+	}
+	else
+	{
+		size_t end = contentType.find(';', pos);
+		boundary = contentType.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
+	}
+	boundary = trimCopy(boundary);
+	return !boundary.empty();
+}
+
+static bool parseContentDispositionFilename(const std::string& disposition, std::string& filename)
+{
+	std::string lower = toLowerCopy(disposition);
+	size_t pos = lower.find("filename=");
+	if (pos == std::string::npos)
+		return false;
+	pos += 9;
+	while (pos < disposition.size() && (disposition[pos] == ' ' || disposition[pos] == '\t'))
+		++pos;
+	if (pos >= disposition.size())
+		return false;
+	if (disposition[pos] == '"')
+	{
+		size_t end = disposition.find('"', pos + 1);
+		if (end == std::string::npos)
+			return false;
+		filename = disposition.substr(pos + 1, end - pos - 1);
+	}
+	else
+	{
+		size_t end = disposition.find(';', pos);
+		filename = disposition.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
+	}
+	filename = trimCopy(filename);
+	filename = basenameCopy(filename);
+	return !filename.empty();
+}
+
+static bool extractHeadersBlock(const std::vector<char>& body,
+							   size_t start,
+							   size_t end,
+							   std::string& contentDisposition)
+{
+	std::string headers = vectorSliceToString(body, start, end);
+	std::istringstream stream(headers);
+	std::string line;
+	while (std::getline(stream, line))
+	{
+		line = trimCopy(line);
+		if (line.empty())
+			continue;
+		size_t colon = line.find(':');
+		if (colon == std::string::npos)
+			continue;
+		std::string key = trimCopy(line.substr(0, colon));
+		std::string value = trimCopy(line.substr(colon + 1));
+		if (toLowerCopy(key) == "content-disposition")
+			contentDisposition = value;
+	}
+	return !contentDisposition.empty();
+}
+
+static bool extractNextBoundary(const std::vector<char>& body,
+							   const std::vector<char>& boundaryLine,
+							   size_t searchFrom,
+							   size_t& boundaryPos)
+{
+	size_t pos = searchFrom;
+	while (findSequence(body, boundaryLine, pos, boundaryPos))
+	{
+		if (boundaryPos == 0)
+			return true;
+		if (boundaryPos >= 2 && body[boundaryPos - 2] == '\r' && body[boundaryPos - 1] == '\n')
+			return true;
+		pos = boundaryPos + 1;
+	}
+	return false;
+}
+
+static bool parseMultipartBody(const std::vector<char>& body,
+							 const std::string& boundary,
+							 std::vector<UploadPart>& files)
+{
+	if (boundary.empty())
+		return false;
+
+	std::vector<char> boundaryLine;
+	boundaryLine.push_back('-');
+	boundaryLine.push_back('-');
+	boundaryLine.insert(boundaryLine.end(), boundary.begin(), boundary.end());
+
+	size_t boundaryPos = 0;
+	if (!findSequence(body, boundaryLine, 0, boundaryPos))
+		return false;
+	if (boundaryPos != 0)
+	{
+		if (boundaryPos < 2 || body[boundaryPos - 2] != '\r' || body[boundaryPos - 1] != '\n')
+			return false;
+	}
+
+	size_t partStart = boundaryPos + boundaryLine.size();
+	if (partStart + 2 <= body.size() && body[partStart] == '-' && body[partStart + 1] == '-')
+		return true;
+	if (partStart + 2 > body.size() || body[partStart] != '\r' || body[partStart + 1] != '\n')
+		return false;
+	partStart += 2;
+
+	std::vector<char> headerMarker;
+	headerMarker.push_back('\r');
+	headerMarker.push_back('\n');
+	headerMarker.push_back('\r');
+	headerMarker.push_back('\n');
+
+	while (partStart < body.size())
+	{
+		size_t headersEnd = 0;
+		if (!findSequence(body, headerMarker, partStart, headersEnd))
+			return false;
+
+		std::string contentDisposition;
+		extractHeadersBlock(body, partStart, headersEnd, contentDisposition);
+
+		size_t dataStart = headersEnd + 4;
+		size_t nextBoundary = 0;
+		if (!extractNextBoundary(body, boundaryLine, dataStart, nextBoundary))
+			return false;
+		if (nextBoundary < 2 || body[nextBoundary - 2] != '\r' || body[nextBoundary - 1] != '\n')
+			return false;
+
+		size_t dataEnd = nextBoundary - 2;
+		if (dataEnd < dataStart)
+			return false;
+
+		if (!contentDisposition.empty())
+		{
+			std::string filename;
+			if (parseContentDispositionFilename(contentDisposition, filename))
+			{
+				UploadPart part;
+				part.filename = filename;
+				part.data.assign(body.begin() + dataStart, body.begin() + dataEnd);
+				files.push_back(part);
+			}
+		}
+
+		partStart = nextBoundary + boundaryLine.size();
+		if (partStart + 2 <= body.size() && body[partStart] == '-' && body[partStart + 1] == '-')
+			return true;
+		if (partStart + 2 > body.size() || body[partStart] != '\r' || body[partStart + 1] != '\n')
+			return false;
+		partStart += 2;
+	}
+	return true;
+}
+
+static bool ensureDirectoryRecursive(const std::string& directory)
+{
+	if (directory.empty())
+		return false;
+
+	std::string clean = directory;
+	while (clean.size() > 1 && clean[clean.size() - 1] == '/')
+		clean.erase(clean.size() - 1);
+
+	struct stat st;
+	if (stat(clean.c_str(), &st) == 0)
+		return S_ISDIR(st.st_mode);
+
+	size_t slash = clean.find_last_of('/');
+	if (slash != std::string::npos && slash > 0)
+	{
+		std::string parent = clean.substr(0, slash);
+		if (!ensureDirectoryRecursive(parent))
+			return false;
+	}
+	if (mkdir(clean.c_str(), 0755) < 0 && errno != EEXIST)
+		return false;
+	return true;
+}
+
+std::string Response::sanitizeFilename(const std::string& name)
+{
+	std::string base = basenameCopy(trimCopy(name));
+	if (base.empty() || base == "." || base == "..")
+		return "";
+	for (size_t i = 0; i < base.size(); ++i)
+	{
+		unsigned char c = static_cast<unsigned char>(base[i]);
+		if (!(std::isalnum(c) || c == '.' || c == '-' || c == '_'))
+			return "";
+	}
+	return base;
+}
+
+bool Response::writeFile(const std::string& path, const std::vector<char>& data)
+{
+	int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
+	if (fd < 0)
+		return false;
+
+	size_t written = 0;
+	while (written < data.size())
+	{
+		ssize_t chunk = write(fd, &data[written], data.size() - written);
+		if (chunk < 0)
+		{
+			if (errno == EINTR)
+				continue;
+			close(fd);
+			unlink(path.c_str());
+			return false;
+		}
+		written += static_cast<size_t>(chunk);
+	}
+	if (close(fd) < 0)
+	{
+		unlink(path.c_str());
+		return false;
+	}
+	return true;
+}
+
+bool Response::extractMultipartFile(const Request& request, std::string& filename, std::vector<char>& data)
+{
+	std::vector<UploadPart> files;
+	std::string boundary;
+	if (!parseBoundaryParameter(request.getHeader("Content-Type"), boundary))
+		return false;
+	if (!parseMultipartBody(request.getBody(), boundary, files))
+		return false;
+	if (files.empty())
+		return false;
+	filename = files[0].filename;
+	data = files[0].data;
+	return true;
+}
+
+int Response::handleUploadPost(const std::string& requestPath,
+							  const std::vector<char>& requestBody,
+							  const Location& location,
+							  const Request* request)
+{
+	std::string uploadDir = location.getUploadStore();
+	if (uploadDir.empty())
+		return 403;
+	if (!ensureDirectoryRecursive(uploadDir))
+		return 500;
+
+	std::vector<UploadPart> parts;
+	if (request)
+	{
+		std::string contentType = request->getHeader("Content-Type");
+		std::string lowerType = toLowerCopy(contentType);
+		if (lowerType.find("multipart/form-data") != std::string::npos)
+		{
+			std::string boundary;
+			if (!parseBoundaryParameter(contentType, boundary))
+				return 400;
+			if (!parseMultipartBody(requestBody, boundary, parts))
+				return 400;
+		}
+		else
+		{
+			UploadPart part;
+			part.filename = basenameCopy(requestPath);
+			part.data = requestBody;
+			parts.push_back(part);
+		}
+	}
+	else
+	{
+		UploadPart part;
+		part.filename = basenameCopy(requestPath);
+		part.data = requestBody;
+		parts.push_back(part);
+	}
+
+	if (parts.empty())
+	{
+		setStatus(201);
+		setHeader("Content-Type", "text/plain");
+		setBody("Created: no files uploaded");
+		return 201;
+	}
+
+	std::vector<std::string> savedPaths;
+	for (size_t i = 0; i < parts.size(); ++i)
+	{
+		std::string filename = sanitizeFilename(parts[i].filename);
+		if (filename.empty())
+			return 400;
+
+		bool saved = false;
+		for (size_t suffix = 0; suffix < 1000; ++suffix)
+		{
+			std::string candidate = joinPath(uploadDir, addSuffixToFilename(filename, suffix));
+			if (writeFile(candidate, parts[i].data))
+			{
+				savedPaths.push_back(candidate);
+				saved = true;
+				break;
+			}
+			if (errno != EEXIST)
+				return 500;
+		}
+		if (!saved)
+			return 500;
+	}
+
+	setStatus(201);
+	setHeader("Content-Type", "text/plain");
+	std::string body;
+	for (size_t i = 0; i < savedPaths.size(); ++i)
+	{
+		if (!body.empty())
+			body += "\n";
+		body += "Created: " + savedPaths[i];
+	}
+	setBody(body);
+	return 201;
+}
+
 static void applyCgiOutputHeaders(Response& res, const std::string& output)
 {
 	size_t headersEnd = output.find("\r\n\r\n");
@@ -238,27 +642,21 @@ bool Response::executeCgiHandler(const std::string& filePath,
 								  const std::string& queryString,
 								  const std::vector<char>& requestBody,
 								  const Location* location,
-						  const ServerConfig* server,
-							  Request* request)
+								  const ServerConfig* server)
 {
-	Request localReq;
-	Request* reqPtr = request;
-	if (!reqPtr)
-	{
-		std::string target = requestPath.empty() ? "/" : requestPath;
-		if (!queryString.empty())
-			target += "?" + queryString;
+	Request req;
+	std::string target = requestPath.empty() ? "/" : requestPath;
+	if (!queryString.empty())
+		target += "?" + queryString;
 
-		std::string raw = method + " " + target + " HTTP/1.1\r\n";
-		raw += "Host: localhost\r\n";
-		if (method == "POST" || method == "PUT" || !requestBody.empty())
-			raw += "Content-Length: " + intToStr(requestBody.size()) + "\r\n";
-		raw += "\r\n";
-		if (!requestBody.empty())
-			raw.append(requestBody.begin(), requestBody.end());
-		localReq.parse(raw.c_str(), raw.size());
-		reqPtr = &localReq;
-	}
+	std::string raw = method + " " + target + " HTTP/1.1\r\n";
+	raw += "Host: localhost\r\n";
+	if (method == "POST" || method == "PUT" || !requestBody.empty())
+		raw += "Content-Length: " + intToStr(requestBody.size()) + "\r\n";
+	raw += "\r\n";
+	if (!requestBody.empty())
+		raw.append(requestBody.begin(), requestBody.end());
+	req.parse(raw.c_str(), raw.size());
 
 	if (!fileExists(filePath))
 	{
@@ -268,20 +666,15 @@ bool Response::executeCgiHandler(const std::string& filePath,
 
 	CgiHandler cgi(filePath);
 	if (location)
-		cgi.initEnvFromLocation(*reqPtr, *location);
+		cgi.initEnvFromLocation(req, *location);
 	else
-		cgi.initEnvBasic(*reqPtr, filePath, requestPath.empty() ? "/" : requestPath, queryString);
+		cgi.initEnvBasic(req, filePath, requestPath.empty() ? "/" : requestPath, queryString);
 
 	short error_code = 0;
-	std::string output = cgi.execute(*reqPtr, error_code);
+	std::string output = cgi.execute(req, error_code);
 	if (error_code != 0)
 	{
 		error(error_code, server);
-		return false;
-	}
-	if (output.empty())
-	{
-		error(500, server);
 		return false;
 	}
 
@@ -294,9 +687,9 @@ void Response::build(const std::string& method,
 					 const std::string& path,
 					 const std::vector<char>& requestBody,
 					 const Location* location,
-				 const ServerConfig* server,
+					 const ServerConfig* server,
 					 const std::string& defaultRoot,
-					 Request* request)
+					 const Request* request)
 {
 	std::string requestPath = path.empty() ? "/" : path;
 	std::string queryString;
@@ -307,11 +700,19 @@ void Response::build(const std::string& method,
 		requestPath = requestPath.substr(0, queryPos);
 	}
 
-	std::string root = defaultRoot;
-	if (server && !server->getRoot().empty())
-		root = server->getRoot();
+	size_t bodyLimit = 0;
+	if (location)
+		bodyLimit = location->getMaxBodySize();
+	else if (server)
+		bodyLimit = server->getClientMaxBodySize();
+	if (bodyLimit != 0 && requestBody.size() > bodyLimit)
+	{
+		error(413, server);
+		setDefaultHeaders();
+		return;
+	}
 
-	// === LOCATION-LEVEL RULES ===
+	//  LOCATION-LEVEL RULES
 	if (location)
 	{
 		const std::vector<short>& methods = location->getMethods();
@@ -320,13 +721,6 @@ void Response::build(const std::string& method,
 		{
 			error(405, server);
 			_headers["Allow"] = buildAllowHeaderFromMethods(methods);
-			setDefaultHeaders();
-			return;
-		}
-
-		if (requestBody.size() > location->getMaxBodySize())
-		{
-			error(413, server);
 			setDefaultHeaders();
 			return;
 		}
@@ -343,7 +737,7 @@ void Response::build(const std::string& method,
 		// === RESOLVE FILE PATH ===
 		std::string rel = stripLocationPrefix(requestPath, location->getPath());
 		std::string baseRoot = location->getAlias().empty()
-			? (location->getRootLocation().empty() ? root : location->getRootLocation())
+			? (location->getRootLocation().empty() ? defaultRoot : location->getRootLocation())
 			: location->getAlias();
 		std::string filePath = joinPath(baseRoot, rel);
 
@@ -376,7 +770,7 @@ void Response::build(const std::string& method,
 			}
 		}
 
-		// === METHOD HANDLING WITH LOCATION ===
+		//  METHOD HANDLING WITH LOCATION 
 		bool useCgi = isCgiByLocation(*location, filePath) || isCgiScriptPath(filePath);
 
 		if (method == "GET")
@@ -384,9 +778,9 @@ void Response::build(const std::string& method,
 			if (useCgi)
 			{
 				if (location->getExtensionPath().empty())
-					serveCgi(filePath, requestPath, method, queryString, requestBody, request);
+					serveCgi(filePath, requestPath, method, queryString, requestBody);
 				else
-					executeCgiHandler(filePath, requestPath, method, queryString, requestBody, location, server, request);
+					executeCgiHandler(filePath, requestPath, method, queryString, requestBody, location, server);
 			}
 			else
 				serveFile(filePath);
@@ -396,15 +790,25 @@ void Response::build(const std::string& method,
 			if (useCgi)
 			{
 				if (location->getExtensionPath().empty())
-					serveCgi(filePath, requestPath, method, queryString, requestBody, request);
+					serveCgi(filePath, requestPath, method, queryString, requestBody);
 				else
-					executeCgiHandler(filePath, requestPath, method, queryString, requestBody, location, server, request);
+					executeCgiHandler(filePath, requestPath, method, queryString, requestBody, location, server);
+			}
+			else if (!location->getUploadStore().empty())
+			{
+				int uploadStatus = handleUploadPost(requestPath, requestBody, *location, request);
+				if (uploadStatus != 201)
+				{
+					error(uploadStatus, server);
+					setDefaultHeaders();
+					return;
+				}
 			}
 			else
 			{
-				setStatus(201);
-				setHeader("Content-Type", "text/plain");
-				setBody("Created");
+				error(403, server);
+				setDefaultHeaders();
+				return;
 			}
 		}
 		else if (method == "DELETE")
@@ -429,31 +833,25 @@ void Response::build(const std::string& method,
 	}
 	else
 	{
-		// === NO LOCATION RULES (FALLBACK) ===
-		if (server && requestBody.size() > server->getClientMaxBodySize())
-		{
-			error(413, server);
-			setDefaultHeaders();
-			return;
-		}
-		std::string filePath = root + (requestPath == "/" ? "/index.html" : requestPath);
+		//  NO LOCATION RULES (FALLBACK) 
+		std::string filePath = defaultRoot + (requestPath == "/" ? "/index.html" : requestPath);
 
 		if (method == "GET")
 		{
 			if (isCgiScriptPath(filePath))
-				serveCgi(filePath, requestPath, method, queryString, requestBody, request);
+				serveCgi(filePath, requestPath, method, queryString, requestBody);
 			else
 				serveFile(filePath);
 		}
 		else if (method == "POST")
 		{
 			if (isCgiScriptPath(filePath))
-				serveCgi(filePath, requestPath, method, queryString, requestBody, request);
+				serveCgi(filePath, requestPath, method, queryString, requestBody);
 			else
 			{
-				setStatus(201);
-				setHeader("Content-Type", "text/plain");
-				setBody("Created");
+				error(404, server);
+				setDefaultHeaders();
+				return;
 			}
 		}
 		else if (method == "DELETE")
@@ -511,10 +909,42 @@ void Response::serveCgi(const std::string& scriptPath,
 						const std::string& requestPath,
 						const std::string& method,
 						const std::string& queryString,
-						const std::vector<char>& requestBody,
-						Request* request)
+						const std::vector<char>& requestBody)
 {
-	executeCgiHandler(scriptPath, requestPath, method, queryString, requestBody, NULL, NULL, request);
+	if (!fileExists(scriptPath))
+	{
+		buildErrorPage(404, NULL);
+		return;
+	}
+
+	Request req;
+	std::string target = requestPath.empty() ? "/" : requestPath;
+	if (!queryString.empty())
+		target += "?" + queryString;
+
+	std::string raw = method + " " + target + " HTTP/1.1\r\n";
+	raw += "Host: localhost\r\n";
+	if (method == "POST" || method == "PUT" || !requestBody.empty())
+		raw += "Content-Length: " + intToStr(requestBody.size()) + "\r\n";
+	raw += "\r\n";
+	if (!requestBody.empty())
+		raw.append(requestBody.begin(), requestBody.end());
+	req.parse(raw.c_str(), raw.size());
+
+    CgiHandler cgi(scriptPath);
+	cgi.initEnvBasic(req, scriptPath, requestPath.empty() ? "/" : requestPath, queryString);
+
+    short error_code = 0;
+    std::string output = cgi.execute(req, error_code);
+
+    if (error_code != 0)
+    {
+        buildErrorPage(error_code, NULL);
+        return;
+    }
+
+    setStatus(200);
+    applyCgiOutputHeaders(*this, output);
 }
 
 std::string Response::toString() const
@@ -601,6 +1031,7 @@ std::string Response::statusMessage(int code)
 		case 403: return "Forbidden";
 		case 404: return "Not Found";
 		case 405: return "Method Not Allowed";
+		case 413: return "Payload Too Large";
 		case 500: return "Internal Server Error";
 		case 501: return "Not Implemented";
 		case 504: return "Gateway Timeout";
