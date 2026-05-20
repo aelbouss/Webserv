@@ -50,7 +50,6 @@ static bool isMethodAllowedByLocation(const std::string& method, const Location&
 	return false;
 }
 
-
 static std::string joinPath(const std::string& left, const std::string& right)
 {
 	if (left.empty())
@@ -64,7 +63,6 @@ static std::string joinPath(const std::string& left, const std::string& right)
 	return left + right;
 }
 
-// Check if a filesystem path is a directory.
 static bool isDirectoryPath(const std::string& path)
 {
 	struct stat st;
@@ -73,7 +71,6 @@ static bool isDirectoryPath(const std::string& path)
 	return S_ISDIR(st.st_mode);
 }
 
-// Remove location prefix from request path for alias/root mapping.
 static std::string stripLocationPrefix(const std::string& requestPath, const std::string& locationPath)
 {
 	if (locationPath.empty() || locationPath == "/")
@@ -84,7 +81,6 @@ static std::string stripLocationPrefix(const std::string& requestPath, const std
 	return out.empty() ? "/" : out;
 }
 
-// Build a basic HTML autoindex listing.
 static std::string buildAutoindexPage(const std::string& dirPath, const std::string& uriPath)
 {
 	DIR *dir = opendir(dirPath.c_str());
@@ -111,7 +107,6 @@ static std::string buildAutoindexPage(const std::string& dirPath, const std::str
 	return body;
 }
 
-// Detect CGI usage based on location extensions.
 static bool isCgiByLocation(const Location& location, const std::string& filePath)
 {
 	const std::vector<std::string>& exts = location.getCgiExtension();
@@ -311,6 +306,9 @@ static bool extractNextBoundary(const std::vector<char>& body,
 	return false;
 }
 
+// FIX: removed the strict "\r\n must precede first boundary" check.
+// RFC 2046 defines the preamble before the first boundary as ignorable,
+// so we simply find the first boundary wherever it appears in the body.
 static bool parseMultipartBody(const std::vector<char>& body,
 							 const std::string& boundary,
 							 std::vector<UploadPart>& files)
@@ -324,13 +322,9 @@ static bool parseMultipartBody(const std::vector<char>& body,
 	boundaryLine.insert(boundaryLine.end(), boundary.begin(), boundary.end());
 
 	size_t boundaryPos = 0;
+	// RFC 2046: preamble before the first boundary is ignorable — just locate it.
 	if (!findSequence(body, boundaryLine, 0, boundaryPos))
 		return false;
-	if (boundaryPos != 0)
-	{
-		if (boundaryPos < 2 || body[boundaryPos - 2] != '\r' || body[boundaryPos - 1] != '\n')
-			return false;
-	}
 
 	size_t partStart = boundaryPos + boundaryLine.size();
 	if (partStart + 2 <= body.size() && body[partStart] == '-' && body[partStart + 1] == '-')
@@ -412,18 +406,26 @@ static bool ensureDirectoryRecursive(const std::string& directory)
 	return true;
 }
 
+// FIX: replace unsafe characters with '_' instead of rejecting the filename outright.
+// The old code returned "" for any filename containing spaces or special chars (e.g.
+// "my photo.jpg", "file (1).txt"), which caused handleUploadPost to return 400.
 std::string Response::sanitizeFilename(const std::string& name)
 {
 	std::string base = basenameCopy(trimCopy(name));
 	if (base.empty() || base == "." || base == "..")
 		return "";
+	std::string result;
 	for (size_t i = 0; i < base.size(); ++i)
 	{
 		unsigned char c = static_cast<unsigned char>(base[i]);
-		if (!(std::isalnum(c) || c == '.' || c == '-' || c == '_'))
-			return "";
+		if (std::isalnum(c) || c == '.' || c == '-' || c == '_')
+			result += static_cast<char>(c);
+		else
+			result += '_';
 	}
-	return base;
+	if (result.empty() || result == "." || result == "..")
+		return "";
+	return result;
 }
 
 bool Response::writeFile(const std::string& path, const std::vector<char>& data)
@@ -548,7 +550,14 @@ int Response::handleUploadPost(const std::string& requestPath,
 	{
 		if (!body.empty())
 			body += "\n";
-		body += "Created: " + savedPaths[i];
+		std::string urlPath = savedPaths[i];
+		if (!uploadDir.empty() && urlPath.compare(0, uploadDir.size(), uploadDir) == 0)
+    		urlPath = urlPath.substr(uploadDir.size());
+		// Make sure it starts with /
+		if (urlPath.empty() || urlPath[0] != '/')
+    		urlPath = "/" + urlPath;
+		body += "Created: " + urlPath;
+
 	}
 	setBody(body);
 	return 201;
@@ -604,8 +613,9 @@ static void applyCgiOutputHeaders(Response& res, const std::string& output)
 }
 
 Response::Response()
-	: _statusCode(200), _statusMessage("OK")
-{}
+	: _statusCode(200), _statusMessage("OK"), _file_path(""), _file_size(0)
+{
+}
 
 Response::Response(int statusCode, const std::string& body,
 				   const std::string& contentType)
@@ -626,14 +636,8 @@ void Response::setDefaultHeaders()
 void Response::error(int code, const ServerConfig* server)
 {
 	buildErrorPage(code, server);
-	if (!_headers.count("Allow"))
-	{
-		// Only add Allow header for 405, and only if not already set
-		if (code != 405 && _headers.count("Allow"))
-		{
-			// Keep existing Allow header
-		}
-	}
+	if (code == 405 && !_headers.count("Allow"))
+		_headers["Allow"] = "GET, POST, DELETE";
 }
 
 bool Response::executeCgiHandler(const std::string& filePath,
@@ -700,6 +704,30 @@ void Response::build(const std::string& method,
 		requestPath = requestPath.substr(0, queryPos);
 	}
 
+	if (request)
+	{
+		if (request->hasError())
+		{
+			int code = request->getErrorCode();
+			error(code ? code : 400, server);
+			setDefaultHeaders();
+			return;
+		}
+		if (request->getVersion() == "HTTP/1.1" && request->getHeader("host").empty())
+		{
+			error(400, server);
+			setDefaultHeaders();
+			return;
+		}
+	}
+
+	if (method == "UNKNOWN")
+	{
+		error(501, server);
+		setDefaultHeaders();
+		return;
+	}
+
 	size_t bodyLimit = 0;
 	if (location)
 		bodyLimit = location->getMaxBodySize();
@@ -712,7 +740,6 @@ void Response::build(const std::string& method,
 		return;
 	}
 
-	//  LOCATION-LEVEL RULES
 	if (location)
 	{
 		const std::vector<short>& methods = location->getMethods();
@@ -734,14 +761,12 @@ void Response::build(const std::string& method,
 			return;
 		}
 
-		// === RESOLVE FILE PATH ===
 		std::string rel = stripLocationPrefix(requestPath, location->getPath());
 		std::string baseRoot = location->getAlias().empty()
 			? (location->getRootLocation().empty() ? defaultRoot : location->getRootLocation())
 			: location->getAlias();
 		std::string filePath = joinPath(baseRoot, rel);
 
-		// === DIRECTORY HANDLING ===
 		if (isDirectoryPath(filePath))
 		{
 			if (!location->getIndexLocation().empty())
@@ -770,7 +795,6 @@ void Response::build(const std::string& method,
 			}
 		}
 
-		//  METHOD HANDLING WITH LOCATION 
 		bool useCgi = isCgiByLocation(*location, filePath) || isCgiScriptPath(filePath);
 
 		if (method == "GET")
@@ -796,6 +820,20 @@ void Response::build(const std::string& method,
 			}
 			else if (!location->getUploadStore().empty())
 			{
+				if (request && request->isBodyStreaming())
+				{
+					if (request->hasUploadResult())
+					{
+						setStatus(201);
+						setHeader("Content-Type", "text/plain");
+						setBody("Created: " + request->getUploadResultUrl());
+						setDefaultHeaders();
+						return;
+					}
+					error(500, server);
+					setDefaultHeaders();
+					return;
+				}
 				int uploadStatus = handleUploadPost(requestPath, requestBody, *location, request);
 				if (uploadStatus != 201)
 				{
@@ -833,7 +871,6 @@ void Response::build(const std::string& method,
 	}
 	else
 	{
-		//  NO LOCATION RULES (FALLBACK) 
 		std::string filePath = defaultRoot + (requestPath == "/" ? "/index.html" : requestPath);
 
 		if (method == "GET")
@@ -892,8 +929,8 @@ void Response::serveFile(const std::string& filePath)
 		return;
 	}
 
-	std::string content = readFile(filePath);
-	if (content.empty())
+	struct stat st;
+	if (stat(filePath.c_str(), &st) != 0)
 	{
 		buildErrorPage(500, NULL);
 		return;
@@ -901,9 +938,10 @@ void Response::serveFile(const std::string& filePath)
 
 	setStatus(200);
 	setHeader("Content-Type", mimeType(filePath));
-	setBody(content);
+	setHeader("Content-Length", intToStr(static_cast<size_t>(st.st_size)));
+	_file_path = filePath;
+	_file_size = static_cast<size_t>(st.st_size);
 }
-
 
 void Response::serveCgi(const std::string& scriptPath,
 						const std::string& requestPath,
@@ -931,20 +969,20 @@ void Response::serveCgi(const std::string& scriptPath,
 		raw.append(requestBody.begin(), requestBody.end());
 	req.parse(raw.c_str(), raw.size());
 
-    CgiHandler cgi(scriptPath);
+	CgiHandler cgi(scriptPath);
 	cgi.initEnvBasic(req, scriptPath, requestPath.empty() ? "/" : requestPath, queryString);
 
-    short error_code = 0;
-    std::string output = cgi.execute(req, error_code);
+	short error_code = 0;
+	std::string output = cgi.execute(req, error_code);
 
-    if (error_code != 0)
-    {
-        buildErrorPage(error_code, NULL);
-        return;
-    }
+	if (error_code != 0)
+	{
+		buildErrorPage(error_code, NULL);
+		return;
+	}
 
-    setStatus(200);
-    applyCgiOutputHeaders(*this, output);
+	setStatus(200);
+	applyCgiOutputHeaders(*this, output);
 }
 
 std::string Response::toString() const
@@ -956,7 +994,8 @@ std::string Response::toString() const
 		 it != _headers.end(); ++it)
 		out += it->first + ": " + it->second + "\r\n";
 	out += "\r\n";
-	out += _body;
+	if (_file_path.empty())
+		out += _body;
 
 	return out;
 }

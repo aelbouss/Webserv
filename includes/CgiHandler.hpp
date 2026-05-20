@@ -21,8 +21,6 @@ class CgiHandler {
 		CgiHandler();
 		CgiHandler(std::string path);
 		~CgiHandler();
-		CgiHandler(CgiHandler const &other);
-		CgiHandler &operator=(CgiHandler const &rhs);
 
 		void initEnv(Request& req, const std::vector<Location>::iterator it_loc);
 		void initEnvCgi(Request& req, const std::vector<Location>::iterator it_loc);
@@ -31,8 +29,13 @@ class CgiHandler {
 						  const std::string& queryString);
 		void initEnvFromLocation(Request& req, const Location& location);
 		std::string execute(Request& request, short &error_code);
-		void sendHeaderBody(int &pipe_out, int &fd, std::string &);
-		void fixHeader(std::string &header);
+
+			// Disable copying to avoid shallow-copying raw pointers and double-free.
+		private:
+			CgiHandler(CgiHandler const &other);
+			CgiHandler &operator=(CgiHandler const &rhs);
+
+		public:
 		void clear();
 		std::string setCookie(const std::string& str);
 

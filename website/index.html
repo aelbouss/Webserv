@@ -152,6 +152,11 @@
       background: var(--surface); border: 1px solid var(--border);
       transition: border-color .25s, transform .25s;
     }
+    .feat-card-link {
+      display: block;
+      color: inherit;
+      text-decoration: none;
+    }
     .feat-card:hover { border-color: rgba(79,140,255,0.3); transform: translateY(-4px); }
     .feat-icon {
       width: 48px; height: 48px; border-radius: 14px;
@@ -306,6 +311,7 @@
     <a href="/index.html" class="active">Home</a>
     <a href="/pages/about.html">About</a>
     <a href="/pages/services.html">Services</a>
+    <a href="/pages/methods.html">Methods</a>
     <a href="/pages/contact.html">Contact</a>
     <a href="/pages/login.html" class="nav-cta">Login</a>
   </div>
@@ -317,7 +323,7 @@
   <p class="hero-sub">Nexus is your high-performance web platform. Fast, reliable, and built to scale — hosted on your own webserv instance.</p>
   <div class="hero-btns">
     <a href="/pages/services.html" class="btn btn-primary">Explore Services →</a>
-    <a href="/pages/about.html" class="btn btn-ghost">Learn More</a>
+    <a href="/pages/methods.html" class="btn btn-ghost">Method Pages</a>
   </div>
 </section>
 
@@ -370,6 +376,33 @@
       <h3>Smart Redirects</h3>
       <p>Declare redirects in config to keep URLs clean and users on the right path automatically.</p>
     </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-label">Method Pages</div>
+  <h2 class="section-title">Open a dedicated page for each request type.</h2>
+  <div class="features-grid">
+    <a class="feat-card feat-card-link" href="/pages/get.html">
+      <div class="feat-icon">GET</div>
+      <h3>GET</h3>
+      <p>Read back uploaded files from <strong>/uploads/</strong> and verify static serving.</p>
+    </a>
+    <a class="feat-card feat-card-link" href="/pages/post.html">
+      <div class="feat-icon">POST</div>
+      <h3>POST</h3>
+      <p>Upload a file with multipart/form-data and get the saved file path back from the server.</p>
+    </a>
+    <a class="feat-card feat-card-link" href="/pages/cgi.html">
+      <div class="feat-icon">CGI</div>
+      <h3>CGI</h3>
+      <p>Run the echo and calculator scripts through the CGI handler with GET or POST.</p>
+    </a>
+    <a class="feat-card feat-card-link" href="/pages/delete.html">
+      <div class="feat-icon">DEL</div>
+      <h3>DELETE</h3>
+      <p>Remove an uploaded file using a direct DELETE request to the static route.</p>
+    </a>
   </div>
 </section>
 

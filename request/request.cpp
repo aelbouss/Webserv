@@ -10,8 +10,148 @@ static std::string toLowerCopy(const std::string& value)
     return out;
 }
 
+static bool parseContentLength(const std::string& value, unsigned long& out)
+{
+    char *end_ptr = NULL;
+    unsigned long parsed = std::strtoul(value.c_str(), &end_ptr, 10);
+    if (end_ptr == NULL || *end_ptr != '\0')
+        return false;
+    out = parsed;
+    return true;
+}
 
-Request::Request(): _method(UNKNOWN), _state(REQUEST_LINE), _chunkSize(0) {}
+Request::Request()
+        : _method(UNKNOWN), _state(REQUEST_LINE), _chunkSize(0), _maxBodySize(0),
+            _hasBodyLimit(false), _headersComplete(false), _bodyConfigReady(false),
+            _errorCode(0), _remoteAddr(""), _bodySink(NULL), _bodyReceived(0),
+            _contentLength(0), _isChunked(false), _uploadResultPath(""), _uploadResultUrl("") {}
+
+void Request::setMaxBodySize(unsigned long n)
+{
+    _maxBodySize = n;
+    _hasBodyLimit = (n != 0);
+
+    if (!_hasBodyLimit)
+        return;
+
+    // If headers were already parsed, enforce the limit immediately.
+    if (_headersComplete)
+    {
+        if (_state == BODY)
+        {
+            unsigned long contentLength = 0;
+            std::map<std::string, std::string>::const_iterator it = _headers.find("content-length");
+            if (it != _headers.end() && parseContentLength(it->second, contentLength))
+            {
+                if (_maxBodySize > 0 && contentLength > _maxBodySize)
+                {
+                    _errorCode = 413;
+                    _state = ERROR;
+                }
+            }
+        }
+        else if (_state == CHUNK_SIZE || _state == CHUNK_DATA)
+        {
+            size_t current = _bodySink ? _bodyReceived : _body.size();
+            if (_maxBodySize > 0 && current > _maxBodySize)
+            {
+                _errorCode = 413;
+                _state = ERROR;
+            }
+        }
+        else if (_state == FINISHED)
+        {
+            size_t current = _bodySink ? _bodyReceived : _body.size();
+            if (_maxBodySize > 0 && current > _maxBodySize)
+            {
+                _errorCode = 413;
+                _state = ERROR;
+            }
+        }
+    }
+}
+
+bool Request::hasBodyLimit() const
+{
+    return _hasBodyLimit;
+}
+
+bool Request::hasError() const
+{
+    return _state == ERROR || _errorCode != 0;
+}
+
+bool Request::isHeadersComplete() const
+{
+    return _headersComplete;
+}
+
+bool Request::isBodyConfigReady() const
+{
+    return _bodyConfigReady;
+}
+
+void Request::markBodyConfigReady()
+{
+    _bodyConfigReady = true;
+}
+
+int Request::getErrorCode() const
+{
+    return _errorCode;
+}
+
+void Request::setErrorCode(int code)
+{
+    _errorCode = code;
+    _state = ERROR;
+}
+
+void Request::setRemoteAddr(const std::string& addr)
+{
+    _remoteAddr = addr;
+}
+
+const std::string& Request::getRemoteAddr() const
+{
+    return _remoteAddr;
+}
+
+void Request::setBodySink(BodySink* sink)
+{
+    _bodySink = sink;
+}
+
+void Request::clearBodySink()
+{
+    _bodySink = NULL;
+}
+
+bool Request::isBodyStreaming() const
+{
+    return _bodySink != NULL;
+}
+
+void Request::setUploadResult(const std::string& path, const std::string& url)
+{
+    _uploadResultPath = path;
+    _uploadResultUrl = url;
+}
+
+const std::string& Request::getUploadResultPath() const
+{
+    return _uploadResultPath;
+}
+
+const std::string& Request::getUploadResultUrl() const
+{
+    return _uploadResultUrl;
+}
+
+bool Request::hasUploadResult() const
+{
+    return !_uploadResultUrl.empty();
+}
 Request::Method Request::getMethod() const { return _method; }
 std::string Request::getMethodStr() const
 {
@@ -48,6 +188,7 @@ void Request::parse(const char* data, size_t size)
        // std::cout << _buffer << std::endl; just to test with
         if (_state == REQUEST_LINE && !parseRequestLine()) return;
         if (_state == HEADERS && !parseHeaders()) return;
+        if (_headersComplete && !_bodyConfigReady && (_state == BODY || _state == CHUNK_SIZE)) return;
         if (_state == CHUNK_SIZE && !parseChunkSize()) return;
         if (_state == CHUNK_DATA && !parseChunkData()) return;
         if (_state == BODY && !parseBody()) return;
@@ -125,13 +266,36 @@ bool Request::parseHeaders()
         //If line is empty -> headers finished
         if (line.empty())
         {
+            _headersComplete = true;
+            _bodyReceived = 0;
+            _contentLength = 0;
+            _isChunked = false;
             // Check transfer-encoding first (headers are normalized to lowercase).
             if (_headers.count("transfer-encoding") &&
                 toLowerCopy(_headers["transfer-encoding"]).find("chunked") != std::string::npos)
+            {
+                _isChunked = true;
                 _state = CHUNK_SIZE; 
+            }
             // if there is content length that's mean we have a body else finish baecause no body
             else if (_headers.count("content-length"))
+            {
+                unsigned long contentLength = 0;
+                if (!parseContentLength(_headers["content-length"], contentLength))
+                {
+                    _errorCode = 400;
+                    _state = ERROR;
+                    return false;
+                }
+                _contentLength = contentLength;
+                if (_hasBodyLimit && _maxBodySize > 0 && contentLength > _maxBodySize)
+                {
+                    _errorCode = 413;
+                    _state = ERROR;
+                    return false;
+                }
                 _state = BODY;
+            }
             else
                 _state = FINISHED;
             return true;
@@ -145,6 +309,7 @@ bool Request::parseHeaders()
         size_t colon = line.find(':');
         if (colon == std::string::npos)
         {
+            _errorCode = 400;
             _state = ERROR;
             return false;
         }
@@ -174,6 +339,7 @@ bool Request::parseChunkSize()
 
     if (ss.fail())
     {
+        _errorCode = 400;
         _state = ERROR;
         return false;
     }
@@ -181,7 +347,17 @@ bool Request::parseChunkSize()
     if (_chunkSize == 0)
     {
         _state = FINISHED;
+        if (_bodySink)
+            _bodySink->onBodyEnd();
         return true;
+    }
+
+    size_t current = _bodySink ? _bodyReceived : _body.size();
+    if (_hasBodyLimit && _maxBodySize > 0 && current + _chunkSize > _maxBodySize)
+    {
+        _errorCode = 413;
+        _state = ERROR;
+        return false;
     }
 
     _state = CHUNK_DATA;
@@ -194,7 +370,32 @@ bool Request::parseChunkData()
     if (_buffer.size() < _chunkSize + 2)
         return false;
 
-    _body.insert(_body.end(), _buffer.begin(), _buffer.begin() + _chunkSize);
+    // Enforce max body size if configured
+    size_t current = _bodySink ? _bodyReceived : _body.size();
+    if (_hasBodyLimit && _maxBodySize > 0 && current + _chunkSize > _maxBodySize)
+    {
+        _errorCode = 413; // Payload Too Large
+        _state = ERROR;
+        return false;
+    }
+
+    if (_bodySink)
+    {
+        int res = _bodySink->onBodyData(_buffer.data(), _chunkSize);
+        if (res == BodySink::BODY_AGAIN)
+            return false;
+        if (res != BodySink::BODY_OK)
+        {
+            _errorCode = (res < 0 ? -res : 500);
+            _state = ERROR;
+            return false;
+        }
+    }
+    else
+    {
+        _body.insert(_body.end(), _buffer.begin(), _buffer.begin() + _chunkSize);
+    }
+    _bodyReceived += _chunkSize;
     _buffer.erase(0, _chunkSize + 2);
 
     _state = CHUNK_SIZE;
@@ -207,26 +408,66 @@ bool Request::parseBody()
     std::map<std::string, std::string>::const_iterator it = _headers.find("content-length");
     if (it == _headers.end())
     {
+        _errorCode = 400;
         _state = ERROR;
         return false;
     }
 
-    char *end_ptr = NULL;
-    unsigned long contentLength = std::strtoul(it->second.c_str(), &end_ptr, 10);
-    if (*end_ptr != '\0')
+    unsigned long contentLength = 0;
+    if (!parseContentLength(it->second, contentLength))
     {
+        _errorCode = 400;
         _state = ERROR;
         return false;
     }
 
-    if (_buffer.size() < contentLength) // wait for  _buffer finish all bvbody content bytes we need base on Content-Length
+    if (_bodyReceived >= contentLength)
+    {
+        _state = FINISHED;
+        if (_bodySink)
+            _bodySink->onBodyEnd();
+        return true;
+    }
+
+    if (_buffer.empty())
         return false;
-    // store all content from 0 to Content-Length in _body
-    _body.insert(_body.end(), _buffer.begin(), _buffer.begin() + contentLength);
-    //remove body copntent from _buffer
-    _buffer.erase(0, contentLength);
-    //update satate
-    _state = FINISHED;
+
+    size_t remaining = contentLength - _bodyReceived;
+    size_t toConsume = _buffer.size() < remaining ? _buffer.size() : remaining;
+    // Enforce max body size if configured
+    if (_hasBodyLimit && _maxBodySize > 0 && _bodyReceived + toConsume > _maxBodySize)
+    {
+        _errorCode = 413;
+        _state = ERROR;
+        return false;
+    }
+
+    if (_bodySink)
+    {
+        int res = _bodySink->onBodyData(_buffer.data(), toConsume);
+        if (res == BodySink::BODY_AGAIN)
+            return false;
+        if (res != BodySink::BODY_OK)
+        {
+            _errorCode = (res < 0 ? -res : 500);
+            _state = ERROR;
+            return false;
+        }
+    }
+    else
+    {
+        _body.insert(_body.end(), _buffer.begin(), _buffer.begin() + toConsume);
+    }
+
+    _bodyReceived += toConsume;
+    _buffer.erase(0, toConsume);
+
+    if (_bodyReceived >= contentLength)
+    {
+        _state = FINISHED;
+        if (_bodySink)
+            _bodySink->onBodyEnd();
+    }
 
     return true;
 }

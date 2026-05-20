@@ -6,8 +6,18 @@
 #include <sstream>
 
 
+
 # ifndef REQUEST_HPP
 # define REQUEST_HPP
+
+class BodySink
+{
+    public:
+        enum Result { BODY_OK = 0, BODY_AGAIN = 1, BODY_ERROR = -1 };
+        virtual ~BodySink() {}
+        virtual int onBodyData(const char* data, size_t len) = 0;
+        virtual void onBodyEnd() = 0;
+};
 
 class Request
 {
@@ -28,6 +38,23 @@ class Request
         Request();
         void parse(const char* data, size_t size);
         bool isFinished();
+        void setMaxBodySize(unsigned long n);
+        bool hasBodyLimit() const;
+        bool hasError() const;
+        bool isHeadersComplete() const;
+        bool isBodyConfigReady() const;
+        void markBodyConfigReady();
+        int getErrorCode() const;
+        void setErrorCode(int code);
+        void setRemoteAddr(const std::string& addr);
+        const std::string& getRemoteAddr() const;
+        void setBodySink(BodySink* sink);
+        void clearBodySink();
+        bool isBodyStreaming() const;
+        void setUploadResult(const std::string& path, const std::string& url);
+        const std::string& getUploadResultPath() const;
+        const std::string& getUploadResultUrl() const;
+        bool hasUploadResult() const;
 
         Method getMethod() const;
         std::string getMethodStr() const;
@@ -47,6 +74,18 @@ class Request
         State       _state;
         std::string _buffer;
         size_t      _chunkSize;
+        unsigned long _maxBodySize;
+        bool _hasBodyLimit;
+        bool _headersComplete;
+        bool _bodyConfigReady;
+        int _errorCode;
+        std::string _remoteAddr;
+        BodySink* _bodySink;
+        size_t _bodyReceived;
+        unsigned long _contentLength;
+        bool _isChunked;
+        std::string _uploadResultPath;
+        std::string _uploadResultUrl;
 
         bool parseRequestLine();
         bool parseChunkData();

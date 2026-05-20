@@ -25,11 +25,7 @@ class Response
 				   const Location* location = NULL,
 				   const ServerConfig* server = NULL,
 				   const std::string& defaultRoot = "./www",
-<<<<<<< HEAD
-				   Request* request = NULL);
-=======
 				   const Request* request = NULL);
->>>>>>> 168ddf900f738217e8c632eab7666959723d69bc
 
 		// Convenience overload for simple cases (no location/server rules).
 		void build(const std::string& method,
@@ -42,8 +38,7 @@ class Response
 					  const std::string& requestPath,
 					  const std::string& method,
 					  const std::string& queryString,
-				  const std::vector<char>& requestBody,
-				  Request* request = NULL);
+					  const std::vector<char>& requestBody);
 
 		void setStatus(int code);
 		void setHeader(const std::string& key, const std::string& value);
@@ -61,6 +56,9 @@ class Response
 		std::string                         _statusMessage;
 		std::map<std::string, std::string>  _headers;
 		std::string                         _body;
+		// If serving a file, store path and size; body will be empty.
+		std::string                         _file_path;
+		size_t                              _file_size;
 
 		// Helper methods (no duplication)
 		void setDefaultHeaders();
@@ -72,13 +70,7 @@ class Response
 							   const std::string& queryString,
 							   const std::vector<char>& requestBody,
 							   const Location* location,
-<<<<<<< HEAD
-						   const ServerConfig* server,
-						   Request* request);
-
-=======
 							   const ServerConfig* server);
->>>>>>> 168ddf900f738217e8c632eab7666959723d69bc
 		static std::string statusMessage(int code);
 		static std::string mimeType(const std::string& path);
 		static bool        fileExists(const std::string& path);
@@ -91,4 +83,8 @@ class Response
 								   const std::vector<char>& requestBody,
 								   const Location& location,
 								   const Request* request);
+
+	public:
+		const std::string &getFilePath() const { return _file_path; }
+		size_t getFileSize() const { return _file_size; }
 };

@@ -7,6 +7,21 @@
 #include <signal.h>
 #include <ctime>
 
+static std::string normalizeHeaderKey(const std::string& name)
+{
+	std::string out;
+	out.reserve(name.size());
+	for (size_t i = 0; i < name.size(); ++i)
+	{
+		unsigned char c = static_cast<unsigned char>(name[i]);
+		if (c == '-')
+			out += '_';
+		else
+			out += static_cast<char>(std::toupper(c));
+	}
+	return out;
+}
+
 
 CgiHandler::CgiHandler() {
 	this->_cgi_pid = -1;
@@ -108,6 +123,8 @@ void CgiHandler::initEnvBasic(Request& req, const std::string& scriptPath,
 	this->_env["REQUEST_URI"] = requestUri + (queryString.empty() ? "" : "?" + queryString);
 	this->_env["SERVER_PROTOCOL"] = "HTTP/1.1";
 	this->_env["REDIRECT_STATUS"] = "200";
+	if (!req.getRemoteAddr().empty())
+		this->_env["REMOTE_ADDR"] = req.getRemoteAddr();
 
 	if (req.getMethod() == Request::POST)
 	{
@@ -129,9 +146,7 @@ void CgiHandler::initEnvBasic(Request& req, const std::string& scriptPath,
 	for (std::map<std::string, std::string>::iterator it = request_headers.begin();
 		 it != request_headers.end(); ++it)
 	{
-		std::string name = it->first;
-		std::transform(name.begin(), name.end(), name.begin(), ::toupper);
-		std::string key = "HTTP_" + name;
+		std::string key = "HTTP_" + normalizeHeaderKey(it->first);
 		_env[key] = it->second;
 	}
 
@@ -176,7 +191,8 @@ void CgiHandler::initEnvFromLocation(Request& req, const Location& location)
 	this->_env["PATH_TRANSLATED"] = location.getRootLocation() + (this->_env["PATH_INFO"].empty() ? "/" : this->_env["PATH_INFO"]);
 	std::string query = req.getQuery();
 	this->_env["QUERY_STRING"] = decode(query);
-	this->_env["REMOTE_ADDR"] = req.getHeader("host");
+	if (!req.getRemoteAddr().empty())
+		this->_env["REMOTE_ADDR"] = req.getRemoteAddr();
 	int poz = findStart(req.getHeader("host"), ":");
 	this->_env["SERVER_NAME"] = (poz > 0 ? req.getHeader("host").substr(0, poz) : "");
 	this->_env["SERVER_PORT"] = (poz > 0 ? req.getHeader("host").substr(poz + 1, req.getHeader("host").size()) : "");
@@ -226,6 +242,8 @@ void CgiHandler::initEnvCgi(Request& req, const std::vector<Location>::iterator 
     this->_env["PATH_INFO"] = this->_cgi_path;//
     this->_env["PATH_TRANSLATED"] = this->_cgi_path;//
     this->_env["REQUEST_URI"] = this->_cgi_path;//
+	if (!req.getRemoteAddr().empty())
+		this->_env["REMOTE_ADDR"] = req.getRemoteAddr();
     this->_env["SERVER_NAME"] = req.getHeader("host");
     this->_env["SERVER_PORT"] ="8002";
 	this->_env["REQUEST_METHOD"] = req.getMethodStr();
@@ -234,12 +252,10 @@ void CgiHandler::initEnvCgi(Request& req, const std::vector<Location>::iterator 
 	this->_env["SERVER_SOFTWARE"] = "AMANIX";
 
 	std::map<std::string, std::string> request_headers = req.getHeaders();
-	for(std::map<std::string, std::string>::iterator it = request_headers.begin();
-		it != request_headers.end(); ++it)
+	for (std::map<std::string, std::string>::iterator it = request_headers.begin();
+		 it != request_headers.end(); ++it)
 	{
-		std::string name = it->first;
-		std::transform(name.begin(), name.end(), name.begin(), ::toupper);
-		std::string key = "HTTP_" + name;
+		std::string key = "HTTP_" + normalizeHeaderKey(it->first);
 		_env[key] = it->second;
 	}
 	this->_ch_env = (char **)calloc(this->_env.size() + 1, sizeof(char *));
@@ -280,7 +296,8 @@ void CgiHandler::initEnv(Request& req, const std::vector<Location>::iterator it_
     this->_env["PATH_TRANSLATED"] = it_loc->getRootLocation() + (this->_env["PATH_INFO"] == "" ? "/" : this->_env["PATH_INFO"]);
 	std::string query = req.getQuery();
 	this->_env["QUERY_STRING"] = decode(query);
-	this->_env["REMOTE_ADDR"] = req.getHeader("host");
+	if (!req.getRemoteAddr().empty())
+		this->_env["REMOTE_ADDR"] = req.getRemoteAddr();
 	poz = findStart(req.getHeader("host"), ":");
 	this->_env["SERVER_NAME"] = (poz > 0 ? req.getHeader("host").substr(0, poz) : "");
 	this->_env["SERVER_PORT"] = (poz > 0 ? req.getHeader("host").substr(poz + 1, req.getHeader("host").size()) : "");
@@ -361,15 +378,56 @@ std::string CgiHandler::execute(Request& request, short &error_code)
 		if (request.getMethod() == Request::POST)
 		{
 			const std::vector<char>& body_vec = request.getBody();
+			// Make the write end non-blocking to avoid blocking the server loop
+			int wflags = fcntl(write_fd, F_GETFL, 0);
+			if (wflags >= 0)
+				fcntl(write_fd, F_SETFL, wflags | O_NONBLOCK);
+
 			size_t total = 0;
 			size_t len = body_vec.size();
+			time_t writeStart = std::time(NULL);
 			while (total < len)
 			{
+				// timeout guard for writing
+				if (std::time(NULL) - writeStart >= timeoutSeconds)
+				{
+					// timeout while sending request body
+					close(write_fd);
+					close(read_fd);
+					error_code = 504;
+					int status = 0;
+					if (this->_cgi_pid > 0)
+						waitpid(this->_cgi_pid, &status, 0);
+					return std::string();
+				}
+
 				ssize_t w = write(write_fd, &body_vec[total], len - total);
+				if (w > 0)
+				{
+					total += (size_t)w;
+					continue;
+				}
 				if (w < 0)
 				{
-					if (errno == EINTR) continue;
-					// write error: cleanup and return
+					if (errno == EINTR)
+						continue;
+					if (errno == EAGAIN || errno == EWOULDBLOCK)
+					{
+						struct pollfd pw;
+						pw.fd = write_fd;
+						pw.events = POLLOUT;
+						pw.revents = 0;
+						int pr = poll(&pw, 1, pollSliceMs);
+						if (pr < 0)
+						{
+							if (errno == EINTR)
+								continue;
+							break;
+						}
+						// if pr == 0 just loop to check timeout and try again
+						continue;
+					}
+					// other write error: cleanup and return
 					close(write_fd);
 					close(read_fd);
 					error_code = 500;
@@ -378,7 +436,6 @@ std::string CgiHandler::execute(Request& request, short &error_code)
 						waitpid(this->_cgi_pid, &status, 0);
 					return std::string();
 				}
-				total += (size_t)w;
 			}
 		}
 		// always close write end after sending (even if zero-length)

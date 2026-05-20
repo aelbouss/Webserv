@@ -1,5 +1,10 @@
 # include "../includes/multiplexing.hpp"
 # include "../includes/response.hpp"
+# include <unistd.h>
+# include <sys/sendfile.h>
+# include <sys/socket.h>
+# include <netinet/in.h>
+# include <arpa/inet.h>
 
 static std::string strip_port_from_host(const std::string& host)
 {
@@ -145,7 +150,7 @@ const ServerConfig* multiplexing::select_server_for_request(
 		void	multiplexing::add_new_client(int fd)
 		{
 			struct	sockaddr	 client_addr;
-			struct	pollfd		client_card;
+			struct	pollfd	client_card;
 			socklen_t	addr_len;
 			int	new_client;
 			client client_room;
@@ -153,11 +158,17 @@ const ServerConfig* multiplexing::select_server_for_request(
 			addr_len = sizeof(client_addr);
 			new_client = accept(fd, (struct sockaddr *)&client_addr, &addr_len);
 			if (new_client == -1 )
-				throw MultiplexingExcption("failed to add new client");
+			{
+				// Transient errors are expected in non-blocking mode; just return and continue
+				if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+					return;
+				throw MultiplexingExcption(std::string("failed to add new client: ") + strerror(errno));
+			}
 			if (fcntl(new_client, F_SETFL, O_NONBLOCK) < 0)
 			{
-				close(fd);
-				throw MultiplexingExcption("failed to set non blocking");
+				// Close the accepted socket on failure (do NOT close the listening socket)
+				close(new_client);
+				throw MultiplexingExcption(std::string("failed to set non blocking: ") + strerror(errno));
 			}
 			client_card.fd = new_client ;
 			client_card.events = POLLIN ;
@@ -225,8 +236,8 @@ const ServerConfig* multiplexing::select_server_for_request(
 				{
 					const Location *location = server->matchLocation(request.getPath());
 					response.build(request.getMethodStr(), requestPath,
-							   request.getBody(), location, server, server->getRoot(),
-							   &client_idx->second.get_request());
+						   request.getBody(), location, server, server->getRoot(),
+						   &client_idx->second.get_request());
 				}
 				else
 				{
@@ -241,7 +252,7 @@ const ServerConfig* multiplexing::select_server_for_request(
 				response.setHeader("Content-Type", "text/plain");
 				response.setBody("Internal Server Error");
 			}
-			client_idx->second.set_response(response.toString());
+			client_idx->second.set_response_from_response(response);
 			client_idx->second.reset_bytes_sent();
 			set_client_as_finished(fd);
 		}
@@ -253,11 +264,13 @@ const ServerConfig* multiplexing::select_server_for_request(
 				return;
 
 			const std::string& payload = client_idx->second.get_response();
+			size_t header_size = payload.size();
 			size_t sent_total = client_idx->second.get_bytes_sent();
 
-			while (sent_total < payload.size())
+			// 1) Send remaining headers/body part (if any)
+			while (sent_total < header_size)
 			{
-				ssize_t sent = send(fd, payload.data() + sent_total, payload.size() - sent_total, 0);
+				ssize_t sent = send(fd, payload.data() + sent_total, header_size - sent_total, 0);
 				if (sent < 0)
 				{
 					if (errno == EINTR)
@@ -275,7 +288,50 @@ const ServerConfig* multiplexing::select_server_for_request(
 				client_idx->second.add_bytes_sent(static_cast<size_t>(sent));
 			}
 
-			if (sent_total >= payload.size())
+			// 2) If there is a file to stream, send it via sendfile
+			if (client_idx->second.is_streaming_file())
+			{
+				int in_fd = client_idx->second.get_file_fd();
+				off_t off = client_idx->second.get_file_offset();
+				size_t remaining = client_idx->second.get_file_size() - static_cast<size_t>(off);
+				while (remaining > 0)
+				{
+					ssize_t sf = sendfile(fd, in_fd, &off, remaining);
+					if (sf > 0)
+					{
+						off += (off_t)sf;
+						client_idx->second.set_file_offset(off);
+						remaining -= static_cast<size_t>(sf);
+						continue;
+					}
+					if (sf == 0)
+						break;
+					if (sf < 0)
+					{
+						if (errno == EINTR)
+							continue;
+						if (errno == EAGAIN || errno == EWOULDBLOCK)
+							return;
+						std::cerr << "sendfile error on fd " << fd << ": " << strerror(errno) << std::endl;
+						close(fd);
+						erase_client_state(fds_list, client_data, client_server_index, fd);
+						return;
+					}
+				}
+
+				// file fully sent -> close connection
+				if (static_cast<size_t>(client_idx->second.get_file_offset()) >= client_idx->second.get_file_size())
+				{
+					if (client_idx->second.get_file_fd() >= 0)
+						close(client_idx->second.get_file_fd());
+					close(fd);
+					erase_client_state(fds_list, client_data, client_server_index, fd);
+				}
+				return;
+			}
+
+			// No file streaming: fully sent headers+body -> close connection
+			if (sent_total >= header_size)
 			{
 				close(fd);
 				erase_client_state(fds_list, client_data, client_server_index, fd);
@@ -309,17 +365,85 @@ const ServerConfig* multiplexing::select_server_for_request(
 			client_idx = client_data.find(fd);
 			if (client_idx == client_data.end())
 				throw MultiplexingExcption("inavlid client");
+			if (client_idx->second.upload_in_progress())
+			{
+				if (!client_idx->second.flush_upload_pending())
+					return;
+				if (client_idx->second.get_upload_error_code() != 0)
+				{
+					client_idx->second.get_request().setErrorCode(client_idx->second.get_upload_error_code());
+					build_and_queue_response(fd);
+					return;
+				}
+			}
 			rb = 1;
 			memset(buffer, 0, sizeof(buffer));
 			rb = recv(fd, buffer, sizeof(buffer) , 0);
 
 			if (rb > 0)
 			{
+				Request& req = client_idx->second.get_request();
+				if (req.getRemoteAddr().empty())
+				{
+					struct sockaddr_in addr;
+					socklen_t len = sizeof(addr);
+					if (getpeername(fd, (struct sockaddr *)&addr, &len) == 0)
+					{
+						char ipbuf[INET_ADDRSTRLEN];
+						const char *ip = inet_ntop(AF_INET, &addr.sin_addr, ipbuf, sizeof(ipbuf));
+						if (ip)
+							req.setRemoteAddr(ip);
+					}
+				}
+
 				client_idx->second.parse_request(buffer, rb);
+				if (req.isHeadersComplete() && !req.isBodyConfigReady())
+				{
+					const ServerConfig* server = NULL;
+					const Location* location = NULL;
+					std::map<int, size_t>::iterator server_idx = client_server_index.find(fd);
+					if (server_idx != client_server_index.end() && server_idx->second < server_configs.size())
+					{
+						server = select_server_for_request(req, server_idx->second);
+						if (server)
+							location = server->matchLocation(req.getPath());
+					}
+
+					unsigned long maxBody = (server ? server->getClientMaxBodySize() : 0);
+					if (location && location->getMaxBodySize() > 0)
+						maxBody = location->getMaxBodySize();
+					req.setMaxBodySize(maxBody);
+
+					bool canUpload = false;
+					if (location && !location->getUploadStore().empty() && req.getMethodStr() == "POST")
+					{
+						std::string path = req.getPath();
+						bool isCgi = false;
+						if (location->getPath() == "/cgi-bin")
+							isCgi = true;
+						if (path.size() >= 3 && (path.substr(path.size() - 3) == ".py" || path.substr(path.size() - 3) == ".sh"))
+							isCgi = true;
+						if (!isCgi)
+							canUpload = true;
+					}
+
+					if (canUpload)
+					{
+						const std::string& contentType = req.getHeader("content-type");
+						if (!client_idx->second.begin_upload(location->getUploadStore(), req.getPath(), contentType, maxBody))
+							req.setErrorCode(client_idx->second.get_upload_error_code() ? client_idx->second.get_upload_error_code() : 500);
+						else
+							req.setBodySink(&client_idx->second);
+					}
+
+					req.markBodyConfigReady();
+					req.parse("", 0);
+				}
+
 				if (client_idx->second.is_parsing_finished())
 				{
 					client_idx->second.set_finished_reading(true);
-						build_and_queue_response(fd);
+					build_and_queue_response(fd);
 					return ;
 				}
 			}
@@ -368,6 +492,13 @@ const ServerConfig* multiplexing::select_server_for_request(
 
 			while (true)
 			{
+				// Avoid calling poll() with an empty array (UB). If no fds are present,
+				// sleep briefly and continue.
+				if (fds_list.empty())
+				{
+					usleep(1000); // 1ms
+					continue;
+				}
 				activity = poll(&fds_list[0], fds_list.size() , -1);
 				if (activity < 0 )
 				{
@@ -375,7 +506,7 @@ const ServerConfig* multiplexing::select_server_for_request(
 						continue;
 					throw  MultiplexingExcption("Global Poll Failure: " + std::string(strerror(errno)));
 				}
-				for (size_t i = 0 ; i < fds_list.size() ; i++)
+				for (size_t i = fds_list.size(); i-- > 0; )
 				{	
 					if (fds_list[i].revents & POLLHUP)
 					{
