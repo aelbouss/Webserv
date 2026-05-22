@@ -143,7 +143,18 @@ client::client()
 	  is_uploading(false), upload_completed(false), upload_error_code(0), upload_dir(""), upload_path(""),
 	  upload_url(""), upload_pending(""), upload_pending_offset(0),
 	  upload_is_multipart(false), upload_boundary(""), upload_buffer(""),
-	  upload_headers_parsed(false) { }
+ 	  upload_headers_parsed(false) { last_activity = std::time(NULL); }
+
+// Add activity timestamp initialization
+void client::touch_activity()
+{
+    last_activity = std::time(NULL);
+}
+
+time_t client::get_last_activity() const
+{
+    return last_activity;
+}
 
 client&	client::operator = (const client& src)
 {
@@ -160,6 +171,9 @@ client&	client::operator = (const client& src)
 	this->file_size = 0;
 	this->file_offset = 0;
 	this->streaming_file = false;
+
+	// Preserve last activity timestamp when copying client state
+	this->last_activity = src.last_activity;
 
 	return (*this);
 }
@@ -190,6 +204,7 @@ void	client::set_client_fd(int clien_fd)
 	file_offset = 0;
 	streaming_file = false;
 	reset_upload_state();
+	touch_activity();
 }
 
 
@@ -202,6 +217,7 @@ int	client::get_client_id(){ return(fd); }
 
 void	client::parse_request(char *data, int rb)
 {
+	touch_activity();
 	request.parse(data, rb);
 }
 

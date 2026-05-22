@@ -59,24 +59,83 @@ CgiHandler::~CgiHandler() {
 
 CgiHandler::CgiHandler(const CgiHandler &other)
 {
-		this->_env = other._env;
-		this->_ch_env = other._ch_env;
-		this->_argv = other._argv;
-		this->_cgi_path = other._cgi_path;
-		this->_cgi_pid = other._cgi_pid;
-		this->_exit_status = other._exit_status;
+    this->_env = other._env;
+    this->_cgi_path = other._cgi_path;
+    this->_cgi_pid = other._cgi_pid;
+    this->_exit_status = other._exit_status;
+
+    // Deep-copy environment array
+    this->_ch_env = NULL;
+    if (other._ch_env)
+    {
+        // count entries
+        int cnt = 0;
+        while (other._ch_env[cnt]) cnt++;
+        this->_ch_env = (char **)calloc(cnt + 1, sizeof(char *));
+        for (int i = 0; i < cnt; ++i)
+            this->_ch_env[i] = strdup(other._ch_env[i]);
+        this->_ch_env[cnt] = NULL;
+    }
+
+    // Deep-copy argv
+    this->_argv = NULL;
+    if (other._argv)
+    {
+        int cnt = 0;
+        while (other._argv[cnt]) cnt++;
+        this->_argv = (char **)malloc(sizeof(char *) * (cnt + 1));
+        for (int i = 0; i < cnt; ++i)
+            this->_argv[i] = strdup(other._argv[i]);
+        this->_argv[cnt] = NULL;
+    }
 }
 
 CgiHandler &CgiHandler::operator=(const CgiHandler &rhs)
 {
     if (this != &rhs)
 	{
+		// cleanup existing resources
+		if (this->_ch_env)
+		{
+			for (int i = 0; this->_ch_env[i]; i++)
+				free(this->_ch_env[i]);
+			free(this->_ch_env);
+			this->_ch_env = NULL;
+		}
+		if (this->_argv)
+		{
+			for (int i = 0; this->_argv[i]; i++)
+				free(this->_argv[i]);
+			free(this->_argv);
+			this->_argv = NULL;
+		}
+
 		this->_env = rhs._env;
-		this->_ch_env = rhs._ch_env;
-		this->_argv = rhs._argv;
 		this->_cgi_path = rhs._cgi_path;
 		this->_cgi_pid = rhs._cgi_pid;
 		this->_exit_status = rhs._exit_status;
+
+		// deep-copy environment
+		if (rhs._ch_env)
+		{
+			int cnt = 0;
+			while (rhs._ch_env[cnt]) cnt++;
+			this->_ch_env = (char **)calloc(cnt + 1, sizeof(char *));
+			for (int i = 0; i < cnt; ++i)
+				this->_ch_env[i] = strdup(rhs._ch_env[i]);
+			this->_ch_env[cnt] = NULL;
+		}
+
+		// deep-copy argv
+		if (rhs._argv)
+		{
+			int cnt = 0;
+			while (rhs._argv[cnt]) cnt++;
+			this->_argv = (char **)malloc(sizeof(char *) * (cnt + 1));
+			for (int i = 0; i < cnt; ++i)
+				this->_argv[i] = strdup(rhs._argv[i]);
+			this->_argv[cnt] = NULL;
+		}
 	}
 	return (*this);
 }

@@ -5,6 +5,7 @@
 # include "request.hpp"
 # include "response.hpp"
 # include <string>
+# include <ctime>
 
 
 class	client : public BodySink
@@ -40,7 +41,13 @@ class	client : public BodySink
 		std::string upload_buffer;
 		bool upload_headers_parsed;
 		int	write_or_buffer(const char* data, size_t len);
+
+		// Last activity timestamp for timeout handling
+		time_t last_activity;
+
 	public:
+		void touch_activity();
+		time_t get_last_activity() const;
 
 		client();
 		client&	operator = (const client& src);

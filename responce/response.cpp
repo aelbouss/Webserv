@@ -721,7 +721,8 @@ void Response::build(const std::string& method,
 		}
 	}
 
-	if (method == "UNKNOWN")
+	// If the method is not one of the implemented verbs, return 501 Not Implemented.
+	if (!(method == "GET" || method == "POST" || method == "DELETE" || method == "PUT" || method == "HEAD"))
 	{
 		error(501, server);
 		setDefaultHeaders();

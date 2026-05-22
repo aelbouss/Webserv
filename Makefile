@@ -20,12 +20,12 @@ SRC = request/request.cpp \
 HEADERS = $(wildcard includes/*.hpp)
 
 OBJ = $(SRC:%.cpp=%.o)
-TARGET = Main_server
+NAME = webserv
 
-all : $(TARGET)
+all : $(NAME)
 
-$(TARGET) : $(OBJ)
-	$(CPPC) $(CPPFLAGS) $(STD) $(OBJ) -o $(TARGET)
+$(NAME) : $(OBJ)
+	$(CPPC) $(CPPFLAGS) $(STD) $(OBJ) -o $(NAME)
 
 %.o : %.cpp $(HEADERS)
 	$(CPPC) $(CPPFLAGS) $(STD) -c $< -o $@
@@ -34,6 +34,6 @@ clean :
 	rm -rf $(OBJ)
 
 fclean : clean
-	rm -rf  $(TARGET)
+	rm -rf  $(NAME)
 
 re : fclean all

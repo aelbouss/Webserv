@@ -5,6 +5,10 @@
 # include <sys/socket.h>
 # include <netinet/in.h>
 # include <arpa/inet.h>
+# include <ctime>
+
+// Idle timeout for client connections (seconds). Close clients inactive longer than this.
+static const int CLIENT_IDLE_TIMEOUT = 60;
 
 static std::string strip_port_from_host(const std::string& host)
 {
@@ -159,10 +163,8 @@ const ServerConfig* multiplexing::select_server_for_request(
 			new_client = accept(fd, (struct sockaddr *)&client_addr, &addr_len);
 			if (new_client == -1 )
 			{
-				// Transient errors are expected in non-blocking mode; just return and continue
-				if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-					return;
-				throw MultiplexingExcption(std::string("failed to add new client: ") + strerror(errno));
+				// Accept failed (possibly transient); do not treat as fatal here.
+				return;
 			}
 			if (fcntl(new_client, F_SETFL, O_NONBLOCK) < 0)
 			{
@@ -175,6 +177,7 @@ const ServerConfig* multiplexing::select_server_for_request(
 			client_card.revents = 0;
 			fds_list.push_back(client_card);
 			client_room.set_client_fd(new_client);
+			client_room.touch_activity();
 			client_room.set_finished_reading(false);
 			client_data.insert(std::pair <int ,client>(new_client, client_room));
 			client_server_index[new_client] = master_socket_index(fd);
@@ -275,17 +278,14 @@ const ServerConfig* multiplexing::select_server_for_request(
 				{
 					if (errno == EINTR)
 						continue;
-					if (errno == EAGAIN || errno == EWOULDBLOCK)
-						return;
-					std::cerr << "Send error on fd " << fd << ": " << strerror(errno) << std::endl;
-					close(fd);
-					erase_client_state(fds_list, client_data, client_server_index, fd);
+					// If send fails despite POLLOUT, treat as transient: return and wait for next poll.
 					return;
 				}
 				if (sent == 0)
 					break;
 				sent_total += static_cast<size_t>(sent);
 				client_idx->second.add_bytes_sent(static_cast<size_t>(sent));
+				client_idx->second.touch_activity();
 			}
 
 			// 2) If there is a file to stream, send it via sendfile
@@ -299,9 +299,12 @@ const ServerConfig* multiplexing::select_server_for_request(
 					ssize_t sf = sendfile(fd, in_fd, &off, remaining);
 					if (sf > 0)
 					{
-						off += (off_t)sf;
+						// sendfile may update 'off' when provided a pointer (Linux semantics).
+						// Use the updated offset rather than incrementing again which
+						// would skip data when the kernel already advanced it.
 						client_idx->second.set_file_offset(off);
-						remaining -= static_cast<size_t>(sf);
+						client_idx->second.touch_activity();
+						remaining = client_idx->second.get_file_size() - static_cast<size_t>(off);
 						continue;
 					}
 					if (sf == 0)
@@ -310,11 +313,7 @@ const ServerConfig* multiplexing::select_server_for_request(
 					{
 						if (errno == EINTR)
 							continue;
-						if (errno == EAGAIN || errno == EWOULDBLOCK)
-							return;
-						std::cerr << "sendfile error on fd " << fd << ": " << strerror(errno) << std::endl;
-						close(fd);
-						erase_client_state(fds_list, client_data, client_server_index, fd);
+						// Treat other errors as transient here and return to poll-driven retry.
 						return;
 					}
 				}
@@ -397,6 +396,7 @@ const ServerConfig* multiplexing::select_server_for_request(
 				}
 
 				client_idx->second.parse_request(buffer, rb);
+				client_idx->second.touch_activity();
 				if (req.isHeadersComplete() && !req.isBodyConfigReady())
 				{
 					const ServerConfig* server = NULL;
@@ -449,13 +449,8 @@ const ServerConfig* multiplexing::select_server_for_request(
 			}
 			if (rb < 0)
 			{
-				if (errno != EAGAIN && errno != EWOULDBLOCK)
-				{
-					std::cerr << "Recv error on fd " << fd << ": " << strerror(errno) << std::endl;
-					close(fd);
-					abort_client(fd);
-					return ;
-				}
+				// Non-fatal recv error (could be transient). Rely on poll readiness rather than errno checks.
+				return;
 			}
 			if (rb == 0)
 			{
@@ -499,6 +494,22 @@ const ServerConfig* multiplexing::select_server_for_request(
 					usleep(1000); // 1ms
 					continue;
 				}
+				// Evict idle clients before blocking in poll()
+				time_t now = std::time(NULL);
+				std::vector<int> to_close;
+				for (std::map<int, client>::iterator it = client_data.begin(); it != client_data.end(); ++it)
+				{
+					if ((now - it->second.get_last_activity()) > CLIENT_IDLE_TIMEOUT)
+						to_close.push_back(it->first);
+				}
+				for (size_t k = 0; k < to_close.size(); ++k)
+				{
+					int cfd = to_close[k];
+					std::cerr << "Closing idle client " << cfd << " due to timeout" << std::endl;
+					close(cfd);
+					abort_client(cfd);
+				}
+
 				activity = poll(&fds_list[0], fds_list.size() , -1);
 				if (activity < 0 )
 				{
