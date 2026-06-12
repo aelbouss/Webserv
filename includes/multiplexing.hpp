@@ -5,6 +5,7 @@
 # include "client.hpp"
 # include "request.hpp"
 # include "ServerConfig.hpp"
+# include "SessionManager.hpp"
 
 
 class	MultiplexingExcption : public std::exception
@@ -33,6 +34,7 @@ class	multiplexing
 		std::vector< std::vector<size_t> > server_groups;
 		std::map <int, client> client_data; // to just distinguish master vs client sockets .
 		std::map <int, size_t> client_server_index;
+		SessionManager _sessions;
 		size_t	master_socket_index(int fd) const;
 		const ServerConfig* select_server_for_request(
 			const Request& request,

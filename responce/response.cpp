@@ -81,6 +81,11 @@ static std::string stripLocationPrefix(const std::string& requestPath, const std
 	return out.empty() ? "/" : out;
 }
 
+/*
+
+dash w89 djndhgffdjfdjhkdsndfb
+
+*/
 static std::string buildAutoindexPage(const std::string& dirPath, const std::string& uriPath)
 {
 	DIR *dir = opendir(dirPath.c_str());

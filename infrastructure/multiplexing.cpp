@@ -1,5 +1,7 @@
 # include "../includes/multiplexing.hpp"
 # include "../includes/response.hpp"
+# include "../includes/SessionManager.hpp"
+
 # include <unistd.h>
 # include <sys/sendfile.h>
 # include <sys/socket.h>
@@ -255,6 +257,11 @@ const ServerConfig* multiplexing::select_server_for_request(
 				response.setHeader("Content-Type", "text/plain");
 				response.setBody("Internal Server Error");
 			}
+			const std::string& cookieHeader = client_idx->second.get_request().getHeader("cookie");
+			SessionManager::Result session = _sessions.getOrCreate(cookieHeader);
+			if (session.isNew)
+				response.setHeader("Set-Cookie", _sessions.buildSetCookieHeader(session.id));
+			
 			client_idx->second.set_response_from_response(response);
 			client_idx->second.reset_bytes_sent();
 			set_client_as_finished(fd);

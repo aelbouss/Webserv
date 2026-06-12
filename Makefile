@@ -13,6 +13,7 @@ SRC = request/request.cpp \
 	infrastructure/client.cpp \
 	infrastructure/multi_listener_setup.cpp \
 	infrastructure/multiplexing.cpp \
+	infrastructure/SessionManager.cpp \
 	infrastructure/ServerManager.cpp \
 	infrastructure/server_infra.cpp  \
 	main.cpp
