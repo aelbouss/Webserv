@@ -149,6 +149,52 @@ std::string SessionManager::extractCookieValue(const std::string& cookieHeader, 
 	return "";
 }
 
+//////////////////////////////////////////////////////////////////////////////////////
+
+
+// create map that store key and value from cookie header 
+//
+
+
+/*
+
+cookie : WEBSEREVID=122fgd22fg5fdg1f; theme=dark;.....
+
+
+*/
+
+
+std::map<std::string, std::string> SessionManager::parseCookie(const std::string& cookieHeader)
+{
+	std::map<std::string, std::string> res;
+	size_t pos = 0;
+	while (pos < cookieHeader.size())
+	{
+		size_t end = cookieHeader.find(';', pos);
+		std::string token = (end == std::string::npos)
+			? cookieHeader.substr(pos)
+			: cookieHeader.substr(pos, end - pos);
+		token = trimCopy(token);
+		if (!token.empty())
+		{
+			size_t eq = token.find('=');
+			if (eq != std::string::npos)
+			{
+				std::string key = trimCopy(token.substr(0, eq));
+				std::string value = token.substr(eq + 1);
+				res[key] = value;
+			}
+		}
+		if (end == std::string::npos)
+			break;
+		pos = end + 1;
+	}
+	return res;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+
+
 std::string SessionManager::generateSessionId() const
 {
 	unsigned char bytes[kSessionIdBytes];

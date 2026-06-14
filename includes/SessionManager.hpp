@@ -18,6 +18,7 @@ class SessionManager
 
 		Result getOrCreate(const std::string& cookieHeader);
 		std::string buildSetCookieHeader(const std::string& sessionId) const;
+		std::map<std::string, std::string> parseCookie(const std::string& cookieHeader);
 		const std::string& getCookieName() const;
 		void setTtlSeconds(size_t seconds);
 
