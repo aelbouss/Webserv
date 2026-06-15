@@ -22,18 +22,18 @@ class Response
 		void build(const std::string& method,
 				   const std::string& path,
 				   const std::vector<char>& requestBody,
-				   const Location* location = NULL,
-				   const ServerConfig* server = NULL,
-				   const std::string& defaultRoot = "./www",
-				   const Request* request = NULL);
+				   const Location* location,
+				   const ServerConfig* server ,
+				   const std::string& defaultRoot,
+				   const Request* request);
 
-		// Convenience overload for simple cases (no location/server rules).
-		void build(const std::string& method,
-				   const std::string& path,
-				   const std::vector<char>& requestBody,
-				   const std::string& webRoot);
+		// // Convenience overload for simple cases (no location/server rules).
+		// void build(const std::string& method,
+		// 		   const std::string& path,
+		// 		   const std::vector<char>& requestBody,
+		// 		   const std::string& webRoot);
 
-		void serveFile(const std::string& filePath);
+		void serveFile(const std::string& filePath , const ServerConfig* server);
 		void serveCgi(const std::string& scriptPath,
 					  const std::string& requestPath,
 					  const std::string& method,

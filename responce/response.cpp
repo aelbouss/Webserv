@@ -813,7 +813,7 @@ void Response::build(const std::string& method,
 					executeCgiHandler(filePath, requestPath, method, queryString, requestBody, location, server);
 			}
 			else
-				serveFile(filePath);
+				serveFile(filePath , server);
 		}
 		else if (method == "POST")
 		{
@@ -884,7 +884,7 @@ void Response::build(const std::string& method,
 			if (isCgiScriptPath(filePath))
 				serveCgi(filePath, requestPath, method, queryString, requestBody);
 			else
-				serveFile(filePath);
+				serveFile(filePath , server);
 		}
 		else if (method == "POST")
 		{
@@ -919,19 +919,19 @@ void Response::build(const std::string& method,
 	setDefaultHeaders();
 }
 
-void Response::build(const std::string& method,
-					 const std::string& path,
-					 const std::vector<char>& requestBody,
-					 const std::string& webRoot)
-{
-	build(method, path, requestBody, NULL, NULL, webRoot, NULL);
-}
+// void Response::build(const std::string& method,
+// 					 const std::string& path,
+// 					 const std::vector<char>& requestBody,
+// 					 const std::string& webRoot)
+// {
+// 	build(method, path, requestBody, NULL, NULL, webRoot, NULL);
+// }
 
-void Response::serveFile(const std::string& filePath)
+void Response::serveFile(const std::string& filePath , const ServerConfig* server)
 {
 	if (!fileExists(filePath))
 	{
-		buildErrorPage(404, NULL);
+		buildErrorPage(404, server);
 		return;
 	}
 
