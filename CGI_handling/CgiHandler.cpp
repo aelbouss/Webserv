@@ -1,8 +1,8 @@
 #include "../includes/CgiHandler.hpp"
 #include "../includes/request.hpp"
 #include <sys/wait.h>
+#include <sys/select.h>
 #include <errno.h>
-#include <poll.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <ctime>
@@ -68,7 +68,6 @@ CgiHandler::CgiHandler(const CgiHandler &other)
     this->_ch_env = NULL;
     if (other._ch_env)
     {
-        // count entries
         int cnt = 0;
         while (other._ch_env[cnt]) cnt++;
         this->_ch_env = (char **)calloc(cnt + 1, sizeof(char *));
@@ -94,7 +93,6 @@ CgiHandler &CgiHandler::operator=(const CgiHandler &rhs)
 {
     if (this != &rhs)
 	{
-		// cleanup existing resources
 		if (this->_ch_env)
 		{
 			for (int i = 0; this->_ch_env[i]; i++)
@@ -115,7 +113,6 @@ CgiHandler &CgiHandler::operator=(const CgiHandler &rhs)
 		this->_cgi_pid = rhs._cgi_pid;
 		this->_exit_status = rhs._exit_status;
 
-		// deep-copy environment
 		if (rhs._ch_env)
 		{
 			int cnt = 0;
@@ -126,7 +123,6 @@ CgiHandler &CgiHandler::operator=(const CgiHandler &rhs)
 			this->_ch_env[cnt] = NULL;
 		}
 
-		// deep-copy argv
 		if (rhs._argv)
 		{
 			int cnt = 0;
@@ -222,7 +218,6 @@ void CgiHandler::initEnvBasic(Request& req, const std::string& scriptPath,
 	this->_argv[1] = NULL;
 }
 
-// Build CGI env/argv from a location's extension mapping.
 void CgiHandler::initEnvFromLocation(Request& req, const Location& location)
 {
 	std::string extension;
@@ -296,11 +291,11 @@ void CgiHandler::initEnvCgi(Request& req, const std::vector<Location>::iterator 
 	}
 
     this->_env["GATEWAY_INTERFACE"] = std::string("CGI/1.1");
-	this->_env["SCRIPT_NAME"] = cgi_exec;//
+	this->_env["SCRIPT_NAME"] = cgi_exec;
     this->_env["SCRIPT_FILENAME"] = this->_cgi_path;
-    this->_env["PATH_INFO"] = this->_cgi_path;//
-    this->_env["PATH_TRANSLATED"] = this->_cgi_path;//
-    this->_env["REQUEST_URI"] = this->_cgi_path;//
+    this->_env["PATH_INFO"] = this->_cgi_path;
+    this->_env["PATH_TRANSLATED"] = this->_cgi_path;
+    this->_env["REQUEST_URI"] = this->_cgi_path;
 	if (!req.getRemoteAddr().empty())
 		this->_env["REMOTE_ADDR"] = req.getRemoteAddr();
     this->_env["SERVER_NAME"] = req.getHeader("host");
@@ -349,7 +344,7 @@ void CgiHandler::initEnv(Request& req, const std::vector<Location>::iterator it_
     this->_env["GATEWAY_INTERFACE"] = "CGI/1.1";
 	poz = findStart(this->_cgi_path, "cgi-bin/");
 	this->_env["SCRIPT_NAME"] = this->_cgi_path;
-    this->_env["SCRIPT_FILENAME"] = ((poz < 0 || (size_t)(poz + 8) > this->_cgi_path.size()) ? "" : this->_cgi_path.substr(poz + 8, this->_cgi_path.size())); // check dif cases after put right parametr from the response
+    this->_env["SCRIPT_FILENAME"] = ((poz < 0 || (size_t)(poz + 8) > this->_cgi_path.size()) ? "" : this->_cgi_path.substr(poz + 8, this->_cgi_path.size()));
 	std::string path = req.getPath();
 	this->_env["PATH_INFO"] = getPathInfo(path, it_loc->getCgiExtension());
     this->_env["PATH_TRANSLATED"] = it_loc->getRootLocation() + (this->_env["PATH_INFO"] == "" ? "/" : this->_env["PATH_INFO"]);
@@ -381,11 +376,54 @@ void CgiHandler::initEnv(Request& req, const std::vector<Location>::iterator it_
 	this->_argv[2] = NULL;
 }
 
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+// Returns true if the fd is ready for the requested I/O within the remaining
+// deadline (deadline = start + timeoutSeconds).  Returns false on timeout.
+// direction: 0 = read, 1 = write.
+static bool waitFd(int fd, int direction, time_t start, int timeoutSeconds)
+{
+	while (true)
+	{
+		time_t now = std::time(NULL);
+		if (now - start >= timeoutSeconds)
+			return false;
+
+		long remaining_us = (long)(timeoutSeconds - (now - start)) * 1000000L;
+
+		fd_set fds;
+		FD_ZERO(&fds);
+		FD_SET(fd, &fds);
+
+		struct timeval tv;
+		tv.tv_sec  = remaining_us / 1000000L;
+		tv.tv_usec = remaining_us % 1000000L;
+
+		fd_set *rfds = NULL;
+		fd_set *wfds = NULL;
+		if (direction == 0)
+			rfds = &fds;
+		else
+			wfds = &fds;
+
+		int ret = select(fd + 1, rfds, wfds, NULL, &tv);
+		if (ret < 0)
+		{
+			if (errno == EINTR)
+				continue;
+			return false;
+		}
+		if (ret == 0)
+			return false; // timeout
+		return true;
+	}
+}
+
+// ─── execute ────────────────────────────────────────────────────────────────
+
 std::string CgiHandler::execute(Request& request, short &error_code)
 {
-	// Guard CGI execution with a fixed timeout to avoid blocking the server loop.
 	const int timeoutSeconds = 5;
-	const int pollSliceMs = 100;
 
 	if (this->_argv == NULL || this->_ch_env == NULL || this->_argv[0] == NULL)
 	{
@@ -404,10 +442,12 @@ std::string CgiHandler::execute(Request& request, short &error_code)
 		error_code = 500;
 		return std::string();
 	}
+
 	this->_cgi_pid = fork();
 	if (this->_cgi_pid == 0)
 	{
-		dup2(pipe_in[0], STDIN_FILENO);
+		// ── child ──
+		dup2(pipe_in[0],  STDIN_FILENO);
 		dup2(pipe_out[1], STDOUT_FILENO);
 		close(pipe_in[0]);
 		close(pipe_in[1]);
@@ -418,45 +458,41 @@ std::string CgiHandler::execute(Request& request, short &error_code)
 	}
 	else if (this->_cgi_pid > 0)
 	{
-		/* parent: close the child-side pipe ends that the parent doesn't use.
-		   Parent will use pipe_in[1] to write (stdin for child) and
-		   pipe_out[0] to read (stdout from child). Closing the other ends
-		   here prevents the parent from accidentally keeping write-ends
-		   open and thus avoids read() from blocking waiting for EOF. */
+		// ── parent ──
+		// Close child-side pipe ends immediately.
 		close(pipe_in[0]);
 		close(pipe_out[1]);
 
 		int write_fd = this->pipe_in[1];
 		int read_fd  = this->pipe_out[0];
 
-		int flags = fcntl(read_fd, F_GETFL, 0);
-		if (flags >= 0)
-			fcntl(read_fd, F_SETFL, flags | O_NONBLOCK);
+		// Make both ends non-blocking so we never stall the server loop.
+		int flags;
+		flags = fcntl(write_fd, F_GETFL, 0);
+		if (flags >= 0) fcntl(write_fd, F_SETFL, flags | O_NONBLOCK);
+		flags = fcntl(read_fd, F_GETFL, 0);
+		if (flags >= 0) fcntl(read_fd, F_SETFL, flags | O_NONBLOCK);	
 
-		// 1) Send POST body (if any), then close write end to signal EOF
+		time_t start = std::time(NULL);
+
+		// ── 1) Write POST body (if any) ──────────────────────────────────
 		if (request.getMethod() == Request::POST)
 		{
 			const std::vector<char>& body_vec = request.getBody();
-			// Make the write end non-blocking to avoid blocking the server loop
-			int wflags = fcntl(write_fd, F_GETFL, 0);
-			if (wflags >= 0)
-				fcntl(write_fd, F_SETFL, wflags | O_NONBLOCK);
-
 			size_t total = 0;
-			size_t len = body_vec.size();
-			time_t writeStart = std::time(NULL);
+			size_t len   = body_vec.size();
+
 			while (total < len)
 			{
-				// timeout guard for writing
-				if (std::time(NULL) - writeStart >= timeoutSeconds)
+				// Wait until the pipe write-end is ready (or timeout).
+				if (!waitFd(write_fd, 1, start, timeoutSeconds))
 				{
-					// timeout while sending request body
 					close(write_fd);
 					close(read_fd);
+					kill(this->_cgi_pid, SIGKILL);
+					int st = 0;
+					waitpid(this->_cgi_pid, &st, 0);
 					error_code = 504;
-					int status = 0;
-					if (this->_cgi_pid > 0)
-						waitpid(this->_cgi_pid, &status, 0);
 					return std::string();
 				}
 
@@ -464,101 +500,68 @@ std::string CgiHandler::execute(Request& request, short &error_code)
 				if (w > 0)
 				{
 					total += (size_t)w;
-					continue;
 				}
-				if (w < 0)
+				else if (w < 0)
 				{
-					if (errno == EINTR)
-						continue;
-					if (errno == EAGAIN || errno == EWOULDBLOCK)
-					{
-						struct pollfd pw;
-						pw.fd = write_fd;
-						pw.events = POLLOUT;
-						pw.revents = 0;
-						int pr = poll(&pw, 1, pollSliceMs);
-						if (pr < 0)
-						{
-							if (errno == EINTR)
-								continue;
-							break;
-						}
-						// if pr == 0 just loop to check timeout and try again
-						continue;
-					}
-					// other write error: cleanup and return
+					if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
+						continue; // waitFd will re-check readiness next iteration
+					// Fatal write error.
 					close(write_fd);
 					close(read_fd);
+					kill(this->_cgi_pid, SIGKILL);
+					int st = 0;
+					waitpid(this->_cgi_pid, &st, 0);
 					error_code = 500;
-					int status = 0;
-					if (this->_cgi_pid > 0)
-						waitpid(this->_cgi_pid, &status, 0);
 					return std::string();
 				}
 			}
 		}
-		// always close write end after sending (even if zero-length)
+		// Signal EOF to the CGI script.
 		close(write_fd);
 
-		// 2) Read CGI output with timeout using poll()
+		// ── 2) Read CGI output ───────────────────────────────────────────
 		std::string raw;
-		char buf[4096];
-		time_t start = std::time(NULL);
-		bool timed_out = false;
+		char        buf[4096];
+		bool        timed_out = false;
+
 		while (true)
 		{
-			if (std::time(NULL) - start >= timeoutSeconds)
+			if (!waitFd(read_fd, 0, start, timeoutSeconds))
 			{
 				timed_out = true;
 				break;
 			}
 
-			struct pollfd pfd;
-			pfd.fd = read_fd;
-			pfd.events = POLLIN | POLLHUP;
-			pfd.revents = 0;
-			int pr = poll(&pfd, 1, pollSliceMs);
-			if (pr < 0)
+			ssize_t r = read(read_fd, buf, sizeof(buf));
+			if (r > 0)
 			{
-				if (errno == EINTR)
-					continue;
-				break;
+				raw.append(buf, (size_t)r);
 			}
-			if (pr == 0)
-				continue;
-
-			if (pfd.revents & (POLLIN | POLLHUP))
+			else if (r == 0)
 			{
-				ssize_t r = read(read_fd, buf, sizeof(buf));
-				if (r > 0)
-				{
-					raw.append(buf, (size_t)r);
-				}
-				else if (r == 0)
-				{
-					break;
-				}
-				else if (errno != EAGAIN && errno != EWOULDBLOCK)
-				{
-					break;
-				}
+				break; // EOF – CGI finished writing
+			}
+			else
+			{
+				if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
+					continue;
+				break; // unexpected read error
 			}
 		}
 		close(read_fd);
 
-		// 3) Reap child (timeout-aware)
+		// ── 3) Reap child ────────────────────────────────────────────────
 		int status = 0;
-		pid_t pid = this->getCgiPid();
-		if (pid > 0)
+		if (this->_cgi_pid > 0)
 		{
 			if (timed_out)
 			{
-				kill(pid, SIGKILL);
-				waitpid(pid, &status, 0);
+				kill(this->_cgi_pid, SIGKILL);
+				waitpid(this->_cgi_pid, &status, 0);
 				error_code = 504;
 				return std::string();
 			}
-			waitpid(pid, &status, 0);
+			waitpid(this->_cgi_pid, &status, 0);
 		}
 
 		return raw;
@@ -566,12 +569,16 @@ std::string CgiHandler::execute(Request& request, short &error_code)
 	else
 	{
 		std::cout << "Fork failed" << std::endl;
+		close(pipe_in[0]);
+		close(pipe_in[1]);
+		close(pipe_out[0]);
+		close(pipe_out[1]);
 		error_code = 500;
 		return std::string();
 	}
 }
 
-
+// ─── utilities ──────────────────────────────────────────────────────────────
 
 int CgiHandler::findStart(const std::string path, const std::string delim)
 {
@@ -620,7 +627,7 @@ std::string CgiHandler::getPathInfo(std::string& path, std::vector<std::string> 
 	return (end == std::string::npos ? tmp : tmp.substr(0, end));
 }
 
-void		CgiHandler::clear()
+void CgiHandler::clear()
 {
 	this->_cgi_pid = -1;
 	this->_exit_status = 0;

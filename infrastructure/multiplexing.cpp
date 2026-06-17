@@ -47,6 +47,24 @@ static void erase_client_state(std::vector<struct pollfd>& fds_list,
 	client_data.erase(fd);
 	}
 
+static void graceful_close(int fd)
+{
+	if (fd < 0)
+		return;
+	shutdown(fd, SHUT_WR);
+	char buffer[256];
+	while (true)
+	{
+		ssize_t rb = recv(fd, buffer, sizeof(buffer), MSG_DONTWAIT);
+		if (rb > 0)
+			continue;
+		if (rb < 0 && (errno == EINTR))
+			continue;
+		break;
+	}
+	close(fd);
+}
+
 
 		multiplexing::multiplexing() {}
 
@@ -224,7 +242,7 @@ const ServerConfig* multiplexing::select_server_for_request(
 		{
 			std::map<int, client>::iterator client_idx = client_data.find(fd);
 			if (client_idx == client_data.end())
-				throw MultiplexingExcption("inavlid client");
+				return;
 
 			std::string requestPath = client_idx->second.get_request().getPath();
 			const std::string& requestQuery = client_idx->second.get_request().getQuery();
@@ -330,7 +348,7 @@ const ServerConfig* multiplexing::select_server_for_request(
 				{
 					if (client_idx->second.get_file_fd() >= 0)
 						close(client_idx->second.get_file_fd());
-					close(fd);
+					graceful_close(fd);
 					erase_client_state(fds_list, client_data, client_server_index, fd);
 				}
 				return;
@@ -339,7 +357,7 @@ const ServerConfig* multiplexing::select_server_for_request(
 			// No file streaming: fully sent headers+body -> close connection
 			if (sent_total >= header_size)
 			{
-				close(fd);
+				graceful_close(fd);
 				erase_client_state(fds_list, client_data, client_server_index, fd);
 			}
 		}
@@ -370,7 +388,7 @@ const ServerConfig* multiplexing::select_server_for_request(
 
 			client_idx = client_data.find(fd);
 			if (client_idx == client_data.end())
-				throw MultiplexingExcption("inavlid client");
+				return;
 			if (client_idx->second.upload_in_progress())
 			{
 				if (!client_idx->second.flush_upload_pending())
@@ -461,7 +479,7 @@ const ServerConfig* multiplexing::select_server_for_request(
 			}
 			if (rb == 0)
 			{
-				std::cout << "the client : "<< fd << " disconnected" << std::endl;
+				//std::cout << "the client : "<< fd << " disconnected" << std::endl;
 				close (fd);
 				abort_client(fd);
 				return ;
@@ -512,7 +530,7 @@ const ServerConfig* multiplexing::select_server_for_request(
 				for (size_t k = 0; k < to_close.size(); ++k)
 				{
 					int cfd = to_close[k];
-					std::cerr << "Closing idle client " << cfd << " due to timeout" << std::endl;
+					//std::cerr << "Closing idle client " << cfd << " due to timeout" << std::endl;
 					close(cfd);
 					abort_client(cfd);
 				}
@@ -526,29 +544,29 @@ const ServerConfig* multiplexing::select_server_for_request(
 				}
 				for (size_t i = fds_list.size(); i-- > 0; )
 				{	
-					if (fds_list[i].revents & POLLHUP)
+					int fd = fds_list[i].fd;
+					short revents = fds_list[i].revents;
+
+					if (revents & (POLLHUP | POLLERR))
 					{
-						std::cerr << "the client : " << fds_list[i].fd << "hung up " << std::endl;
-						close(fds_list[i].fd);
-						abort_client(fds_list[i].fd);
+						std::cerr << "the client : " << fd << " hung up " << std::endl;
+						close(fd);
+						abort_client(fd);
+						continue;
 					}
-					if (fds_list[i].revents & POLLERR)
+					if (revents & POLLIN) // an event occured ;
 					{
-						// the socket encountrede a hardware or kernel error
-						close(fds_list[i].fd);
-						abort_client(fds_list[i].fd);
-					}
-					if (fds_list[i].revents & POLLIN) // an event occured ;
-					{
-						if (is_master_socket(fds_list[i].fd))
-							add_new_client(fds_list[i].fd);
+						if (is_master_socket(fd))
+							add_new_client(fd);
 						else
-							existing_client(fds_list[i].fd);
+							existing_client(fd);
 					}
-					if (fds_list[i].revents & POLLOUT)
+					if (!is_master_socket(fd) && client_data.find(fd) == client_data.end())
+						continue;
+					if (revents & POLLOUT)
 					{
-						if (!is_master_socket(fds_list[i].fd))
-							send_pending_response(fds_list[i].fd);
+						if (!is_master_socket(fd))
+							send_pending_response(fd);
 					}
 				}
 			}

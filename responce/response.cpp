@@ -617,6 +617,30 @@ static void applyCgiOutputHeaders(Response& res, const std::string& output)
 	res.setBody(body);
 }
 
+static std::string buildCgiCacheKey(const std::string& filePath,
+										 const std::string& requestPath,
+										 const std::string& method,
+										 const std::string& queryString,
+										 const std::vector<char>& requestBody,
+										 const Request* request)
+{
+	std::ostringstream key;
+	key << filePath << '\n'
+		<< requestPath << '\n'
+		<< method << '\n'
+		<< queryString << '\n';
+	key << requestBody.size() << '\n';
+	if (!requestBody.empty())
+		key.write(&requestBody[0], requestBody.size());
+	if (request)
+	{
+		key << '\n' << request->getHeader("host") << '\n';
+		key << request->getHeader("content-type") << '\n';
+		key << request->getHeader("content-length") << '\n';
+	}
+	return key.str();
+}
+
 Response::Response()
 	: _statusCode(200), _statusMessage("OK"), _file_path(""), _file_size(0)
 {
@@ -651,7 +675,8 @@ bool Response::executeCgiHandler(const std::string& filePath,
 								  const std::string& queryString,
 								  const std::vector<char>& requestBody,
 								  const Location* location,
-								  const ServerConfig* server)
+								  const ServerConfig* server,
+								  const Request* request)
 {
 	Request req;
 	std::string target = requestPath.empty() ? "/" : requestPath;
@@ -660,17 +685,33 @@ bool Response::executeCgiHandler(const std::string& filePath,
 
 	std::string raw = method + " " + target + " HTTP/1.1\r\n";
 	raw += "Host: localhost\r\n";
+	if (request && !request->getHeader("content-type").empty())
+		raw += "Content-Type: " + request->getHeader("content-type") + "\r\n";
 	if (method == "POST" || method == "PUT" || !requestBody.empty())
 		raw += "Content-Length: " + intToStr(requestBody.size()) + "\r\n";
+	if (request && !request->getHeader("cookie").empty())
+		raw += "Cookie: " + request->getHeader("cookie") + "\r\n";
 	raw += "\r\n";
 	if (!requestBody.empty())
 		raw.append(requestBody.begin(), requestBody.end());
 	req.parse(raw.c_str(), raw.size());
+	req.markBodyConfigReady();
+	req.parse("", 0);
 
 	if (!fileExists(filePath))
 	{
 		error(404, server);
 		return false;
+	}
+
+	static std::map<std::string, std::string> cgiOutputCache;
+	std::string cacheKey = buildCgiCacheKey(filePath, requestPath, method, queryString, requestBody, request);
+	std::map<std::string, std::string>::iterator cached = cgiOutputCache.find(cacheKey);
+	if (cached != cgiOutputCache.end())
+	{
+		setStatus(200);
+		applyCgiOutputHeaders(*this, cached->second);
+		return true;
 	}
 
 	CgiHandler cgi(filePath);
@@ -686,6 +727,8 @@ bool Response::executeCgiHandler(const std::string& filePath,
 		error(error_code, server);
 		return false;
 	}
+
+	cgiOutputCache[cacheKey] = output;
 
 	setStatus(200);
 	applyCgiOutputHeaders(*this, output);
@@ -808,9 +851,9 @@ void Response::build(const std::string& method,
 			if (useCgi)
 			{
 				if (location->getExtensionPath().empty())
-					serveCgi(filePath, requestPath, method, queryString, requestBody);
+					serveCgi(filePath, requestPath, method, queryString, requestBody, request , server);
 				else
-					executeCgiHandler(filePath, requestPath, method, queryString, requestBody, location, server);
+					executeCgiHandler(filePath, requestPath, method, queryString, requestBody, location, server, request);
 			}
 			else
 				serveFile(filePath , server);
@@ -820,9 +863,9 @@ void Response::build(const std::string& method,
 			if (useCgi)
 			{
 				if (location->getExtensionPath().empty())
-					serveCgi(filePath, requestPath, method, queryString, requestBody);
+					serveCgi(filePath, requestPath, method, queryString, requestBody, request , server);
 				else
-					executeCgiHandler(filePath, requestPath, method, queryString, requestBody, location, server);
+					executeCgiHandler(filePath, requestPath, method, queryString, requestBody, location, server, request);
 			}
 			else if (!location->getUploadStore().empty())
 			{
@@ -882,14 +925,14 @@ void Response::build(const std::string& method,
 		if (method == "GET")
 		{
 			if (isCgiScriptPath(filePath))
-				serveCgi(filePath, requestPath, method, queryString, requestBody);
+				serveCgi(filePath, requestPath, method, queryString, requestBody, request , server);
 			else
 				serveFile(filePath , server);
 		}
 		else if (method == "POST")
 		{
 			if (isCgiScriptPath(filePath))
-				serveCgi(filePath, requestPath, method, queryString, requestBody);
+				serveCgi(filePath, requestPath, method, queryString, requestBody, request , server);
 			else
 			{
 				error(404, server);
@@ -953,11 +996,14 @@ void Response::serveCgi(const std::string& scriptPath,
 						const std::string& requestPath,
 						const std::string& method,
 						const std::string& queryString,
-						const std::vector<char>& requestBody)
+						const std::vector<char>& requestBody,
+						const Request* request,
+						const ServerConfig* server)
 {
+	(void)server;  // Suppress unused parameter warning
 	if (!fileExists(scriptPath))
 	{
-		buildErrorPage(404, NULL);
+		buildErrorPage(404, server);
 		return;
 	}
 
@@ -968,12 +1014,18 @@ void Response::serveCgi(const std::string& scriptPath,
 
 	std::string raw = method + " " + target + " HTTP/1.1\r\n";
 	raw += "Host: localhost\r\n";
+	if (request && !request->getHeader("content-type").empty())
+		raw += "Content-Type: " + request->getHeader("content-type") + "\r\n";
 	if (method == "POST" || method == "PUT" || !requestBody.empty())
 		raw += "Content-Length: " + intToStr(requestBody.size()) + "\r\n";
+	if (request && !request->getHeader("cookie").empty())
+		raw += "Cookie: " + request->getHeader("cookie") + "\r\n";
 	raw += "\r\n";
 	if (!requestBody.empty())
 		raw.append(requestBody.begin(), requestBody.end());
 	req.parse(raw.c_str(), raw.size());
+	req.markBodyConfigReady();
+	req.parse("", 0);
 
 	CgiHandler cgi(scriptPath);
 	cgi.initEnvBasic(req, scriptPath, requestPath.empty() ? "/" : requestPath, queryString);
@@ -983,7 +1035,7 @@ void Response::serveCgi(const std::string& scriptPath,
 
 	if (error_code != 0)
 	{
-		buildErrorPage(error_code, NULL);
+		buildErrorPage(error_code, server);
 		return;
 	}
 

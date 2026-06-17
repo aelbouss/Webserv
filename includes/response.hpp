@@ -38,7 +38,9 @@ class Response
 					  const std::string& requestPath,
 					  const std::string& method,
 					  const std::string& queryString,
-					  const std::vector<char>& requestBody);
+					  const std::vector<char>& requestBody,
+					  const Request* request = NULL,
+				 	const ServerConfig* server = NULL);
 
 		void setStatus(int code);
 		void setHeader(const std::string& key, const std::string& value);
@@ -70,7 +72,8 @@ class Response
 							   const std::string& queryString,
 							   const std::vector<char>& requestBody,
 							   const Location* location,
-							   const ServerConfig* server);
+							   const ServerConfig* server,
+							   const Request* request);
 		static std::string statusMessage(int code);
 		static std::string mimeType(const std::string& path);
 		static bool        fileExists(const std::string& path);
