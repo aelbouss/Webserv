@@ -12,7 +12,7 @@ void sigpipeHandle(int sig) { (void)sig; }
 
 int	main(int argc, char **argv)
 {
-	if (argc == 1 || argc == 2)
+	if (argc == 2)
 	{
 		try
 		{
@@ -21,7 +21,7 @@ int	main(int argc, char **argv)
 			ServerManager master;
 			signal(SIGPIPE, sigpipeHandle);
 
-			config = (argc == 1 ? "configs/default.conf" : argv[1]);
+			config = argv[1];
 			cluster.createCluster(config);
 			std::vector<ServerConfig> servers = cluster.getServers();
 			master.setupServers(servers);

@@ -267,7 +267,7 @@ void client::set_response_from_response(const Response& res)
 			return;
 		}
 		file_size = res.getFileSize();
-		file_offset = 0;
+		file_offset = res.getFileOffset();
 		streaming_file = true;
 	}
 	else

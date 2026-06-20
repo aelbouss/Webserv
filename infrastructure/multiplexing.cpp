@@ -549,7 +549,7 @@ const ServerConfig* multiplexing::select_server_for_request(
 
 					if (revents & (POLLHUP | POLLERR))
 					{
-						std::cerr << "the client : " << fd << " hung up " << std::endl;
+						//std::cerr << "the client : " << fd << " hung up " << std::endl;
 						close(fd);
 						abort_client(fd);
 						continue;

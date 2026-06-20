@@ -33,7 +33,8 @@ class Response
 		// 		   const std::vector<char>& requestBody,
 		// 		   const std::string& webRoot);
 
-		void serveFile(const std::string& filePath , const ServerConfig* server);
+		void serveFile(const std::string& filePath , const ServerConfig* server,
+               const std::string& rangeHeader = "");
 		void serveCgi(const std::string& scriptPath,
 					  const std::string& requestPath,
 					  const std::string& method,
@@ -61,6 +62,7 @@ class Response
 		// If serving a file, store path and size; body will be empty.
 		std::string                         _file_path;
 		size_t                              _file_size;
+		off_t                                _file_range_start;
 
 		// Helper methods (no duplication)
 		void setDefaultHeaders();
@@ -90,4 +92,5 @@ class Response
 	public:
 		const std::string &getFilePath() const { return _file_path; }
 		size_t getFileSize() const { return _file_size; }
+		off_t getFileOffset() const { return _file_range_start; }
 };

@@ -642,7 +642,7 @@ static std::string buildCgiCacheKey(const std::string& filePath,
 }
 
 Response::Response()
-	: _statusCode(200), _statusMessage("OK"), _file_path(""), _file_size(0)
+	: _statusCode(200), _statusMessage("OK"), _file_path(""), _file_size(0), _file_range_start(0)
 {
 }
 
@@ -770,7 +770,7 @@ void Response::build(const std::string& method,
 	}
 
 	// If the method is not one of the implemented verbs, return 501 Not Implemented.
-	if (!(method == "GET" || method == "POST" || method == "DELETE" || method == "PUT" || method == "HEAD"))
+	if (!(method == "GET" || method == "POST" || method == "DELETE"))
 	{
 		error(501, server);
 		setDefaultHeaders();
@@ -816,7 +816,7 @@ void Response::build(const std::string& method,
 			: location->getAlias();
 		std::string filePath = joinPath(baseRoot, rel);
 
-		if (isDirectoryPath(filePath))
+		if (method == "GET" && isDirectoryPath(filePath))
 		{
 			if (!location->getIndexLocation().empty())
 			{
@@ -856,7 +856,7 @@ void Response::build(const std::string& method,
 					executeCgiHandler(filePath, requestPath, method, queryString, requestBody, location, server, request);
 			}
 			else
-				serveFile(filePath , server);
+				serveFile(filePath, server, request ? request->getHeader("range") : "");
 		}
 		else if (method == "POST")
 		{
@@ -927,7 +927,7 @@ void Response::build(const std::string& method,
 			if (isCgiScriptPath(filePath))
 				serveCgi(filePath, requestPath, method, queryString, requestBody, request , server);
 			else
-				serveFile(filePath , server);
+				serveFile(filePath, server, request ? request->getHeader("range") : "");
 		}
 		else if (method == "POST")
 		{
@@ -970,7 +970,8 @@ void Response::build(const std::string& method,
 // 	build(method, path, requestBody, NULL, NULL, webRoot, NULL);
 // }
 
-void Response::serveFile(const std::string& filePath , const ServerConfig* server)
+void Response::serveFile(const std::string& filePath, const ServerConfig* server,
+						  const std::string& rangeHeader)
 {
 	if (!fileExists(filePath))
 	{
@@ -985,11 +986,81 @@ void Response::serveFile(const std::string& filePath , const ServerConfig* serve
 		return;
 	}
 
-	setStatus(200);
+	size_t totalSize = static_cast<size_t>(st.st_size);
+	size_t start = 0;
+	size_t end = (totalSize > 0) ? totalSize - 1 : 0;
+	bool isRange = false;
+
+	if (!rangeHeader.empty() && rangeHeader.compare(0, 6, "bytes=") == 0)
+	{
+		std::string spec = rangeHeader.substr(6);
+		size_t dash = spec.find('-');
+		if (dash != std::string::npos)
+		{
+			std::string startStr = spec.substr(0, dash);
+			std::string endStr = spec.substr(dash + 1);
+			char* endptr;
+
+			if (!startStr.empty())
+			{
+				unsigned long parsedStart = std::strtoul(startStr.c_str(), &endptr, 10);
+				if (*endptr == '\0')
+				{
+					start = parsedStart;
+					isRange = true;
+					if (!endStr.empty())
+					{
+						unsigned long parsedEnd = std::strtoul(endStr.c_str(), &endptr, 10);
+						if (*endptr == '\0')
+							end = parsedEnd;
+					}
+				}
+			}
+			else if (!endStr.empty())
+			{
+				// Suffix range: "bytes=-500" means last 500 bytes
+				unsigned long parsedSuffix = std::strtoul(endStr.c_str(), &endptr, 10);
+				if (*endptr == '\0' && parsedSuffix > 0)
+				{
+					isRange = true;
+					start = (parsedSuffix >= totalSize) ? 0 : totalSize - parsedSuffix;
+					end = (totalSize > 0) ? totalSize - 1 : 0;
+				}
+			}
+		}
+	}
+
+	if (isRange && (start > end || start >= totalSize))
+	{
+		setStatus(416);
+		setHeader("Content-Range", "bytes */" + intToStr(totalSize));
+		setHeader("Content-Type", "text/html");
+		setBody("");
+		return;
+	}
+
+	if (end >= totalSize)
+		end = (totalSize > 0) ? totalSize - 1 : 0;
+
+	size_t length = end - start + 1;
+
+	if (isRange)
+	{
+		setStatus(206);
+		std::ostringstream cr;
+		cr << "bytes " << start << "-" << end << "/" << totalSize;
+		setHeader("Content-Range", cr.str());
+	}
+	else
+		setStatus(200);
+
+	setHeader("Accept-Ranges", "bytes");
 	setHeader("Content-Type", mimeType(filePath));
-	setHeader("Content-Length", intToStr(static_cast<size_t>(st.st_size)));
+	setHeader("Content-Length", intToStr(length));
+
 	_file_path = filePath;
-	_file_size = static_cast<size_t>(st.st_size);
+	_file_range_start = static_cast<off_t>(start);
+	_file_size = end + 1;   // stop offset — see note below
 }
 
 void Response::serveCgi(const std::string& scriptPath,
@@ -1155,6 +1226,11 @@ std::string Response::mimeType(const std::string& path)
 	if (ext == "ico")                   return "image/x-icon";
 	if (ext == "txt")                   return "text/plain";
 	if (ext == "pdf")                   return "application/pdf";
+	if (ext == "mp4")                   return "video/mp4";
+	if (ext == "webm")                  return "video/webm";
+	if (ext == "ogg")                   return "video/ogg";
+	if (ext == "mp3")                   return "audio/mpeg";
+	if (ext == "wav")                   return "audio/wav";
 
 	return "application/octet-stream";
 }
