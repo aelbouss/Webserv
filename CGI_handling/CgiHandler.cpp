@@ -256,7 +256,7 @@ void CgiHandler::initEnvFromLocation(Request& req, const Location& location)
 	this->_env["REQUEST_URI"] = req.getPath() + (req.getQuery().empty() ? "" : "?" + req.getQuery());
 	this->_env["SERVER_PROTOCOL"] = "HTTP/1.1";
 	this->_env["REDIRECT_STATUS"] = "200";
-	this->_env["SERVER_SOFTWARE"] = "AMANIX";
+	this->_env["SERVER_SOFTWARE"] = "WEBSERV";
 
 	this->_ch_env = (char **)calloc(this->_env.size() + 1 , sizeof(char *));
 	std::map<std::string, std::string>::const_iterator it = this->_env.begin();
@@ -303,7 +303,7 @@ void CgiHandler::initEnvCgi(Request& req, const std::vector<Location>::iterator 
 	this->_env["REQUEST_METHOD"] = req.getMethodStr();
     this->_env["SERVER_PROTOCOL"] = "HTTP/1.1";
     this->_env["REDIRECT_STATUS"] = "200";
-	this->_env["SERVER_SOFTWARE"] = "AMANIX";
+	this->_env["SERVER_SOFTWARE"] = "WEBSERV";
 
 	std::map<std::string, std::string> request_headers = req.getHeaders();
 	for (std::map<std::string, std::string>::iterator it = request_headers.begin();
@@ -361,7 +361,7 @@ void CgiHandler::initEnv(Request& req, const std::vector<Location>::iterator it_
 	this->_env["REQUEST_URI"] = req.getPath() + (req.getQuery().empty() ? "" : "?" + req.getQuery());
     this->_env["SERVER_PROTOCOL"] = "HTTP/1.1";
     this->_env["REDIRECT_STATUS"] = "200";
-	this->_env["SERVER_SOFTWARE"] = "AMANIX";
+	this->_env["SERVER_SOFTWARE"] = "WEBSERV";
 
 	this->_ch_env = (char **)calloc(this->_env.size() + 1 , sizeof(char *));
 	std::map<std::string, std::string>::const_iterator it = this->_env.begin();

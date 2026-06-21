@@ -30,7 +30,7 @@ class CgiHandler {
 		void initEnvFromLocation(Request& req, const Location& location);
 		std::string execute(Request& request, short &error_code);
 
-			// Disable copying to avoid shallow-copying raw pointers and double-free.
+		// Disable copying to avoid shallow-copying raw pointers and double-free.
 		private:
 			CgiHandler(CgiHandler const &other);
 			CgiHandler &operator=(CgiHandler const &rhs);

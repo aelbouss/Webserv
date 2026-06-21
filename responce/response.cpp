@@ -664,6 +664,7 @@ void Response::setDefaultHeaders()
 
 void Response::error(int code, const ServerConfig* server)
 {
+	setStatus(code);
 	buildErrorPage(code, server);
 	if (code == 405 && !_headers.count("Allow"))
 		_headers["Allow"] = "GET, POST, DELETE";
@@ -961,14 +962,6 @@ void Response::build(const std::string& method,
 
 	setDefaultHeaders();
 }
-
-// void Response::build(const std::string& method,
-// 					 const std::string& path,
-// 					 const std::vector<char>& requestBody,
-// 					 const std::string& webRoot)
-// {
-// 	build(method, path, requestBody, NULL, NULL, webRoot, NULL);
-// }
 
 void Response::serveFile(const std::string& filePath, const ServerConfig* server,
 						  const std::string& rangeHeader)
