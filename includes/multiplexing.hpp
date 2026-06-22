@@ -22,8 +22,7 @@ class	MultiplexingExcption : public std::exception
 class	server_infra;
 class	client;
 class	Request;
-
-# define MAX_BODY_SIZE = 1000;
+class	Response;
 
 class	multiplexing
 {
@@ -34,6 +33,8 @@ class	multiplexing
 		std::vector< std::vector<size_t> > server_groups;
 		std::map <int, client> client_data; // to just distinguish master vs client sockets .
 		std::map <int, size_t> client_server_index;
+		// Maps each live CGI pipe fd (read or write end) to its owning client fd.
+		std::map <int, int> cgi_pipe_to_client;
 		SessionManager _sessions;
 		size_t	master_socket_index(int fd) const;
 		const ServerConfig* select_server_for_request(
@@ -42,6 +43,14 @@ class	multiplexing
 		) const;
 		void	build_and_queue_response(int fd);
 		void	send_pending_response(int fd);
+		// ── async CGI helpers (all I/O driven by the main poll loop) ──
+		void	register_cgi(int client_fd);
+		void	handle_cgi_read(int pipe_fd);
+		void	handle_cgi_write(int pipe_fd);
+		void	finish_cgi(int client_fd, bool timed_out);
+		void	unregister_pipe(int pipe_fd);
+		void	set_client_events(int fd, short events);
+		void	finalize_and_queue(int fd, Response& response);
 	public :
 		multiplexing();
 		multiplexing&	operator = (const multiplexing& src);

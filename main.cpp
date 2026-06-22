@@ -8,7 +8,10 @@
 #include "includes/ServerManager.hpp"
 #include <signal.h>
 
+extern volatile sig_atomic_t g_stop;
+
 void sigpipeHandle(int sig) { (void)sig; }
+void stopHandle(int sig) { (void)sig; g_stop = 1; }
 
 int	main(int argc, char **argv)
 {
@@ -20,6 +23,8 @@ int	main(int argc, char **argv)
 			ConfigParser cluster;
 			ServerManager master;
 			signal(SIGPIPE, sigpipeHandle);
+			signal(SIGINT, stopHandle);
+			signal(SIGTERM, stopHandle);
 
 			config = argv[1];
 			cluster.createCluster(config);

@@ -28,7 +28,16 @@ class CgiHandler {
 						  const std::string& requestUri,
 						  const std::string& queryString);
 		void initEnvFromLocation(Request& req, const Location& location);
-		std::string execute(Request& request, short &error_code);
+
+		// Non-blocking CGI: fork the child and make the parent pipe ends
+		// non-blocking. Returns 0 on success, or an HTTP error code (500).
+		// All actual reading/writing is driven by the main poll() loop.
+		short start(Request& request);
+		int   getReadFd() const;    // parent read end  (pipe_out[0])
+		int   getWriteFd() const;   // parent write end (pipe_in[1])
+		void  closeWriteFd();       // close write end (signals EOF to child)
+		void  killChild();          // SIGKILL + reap (timeout / abort)
+		int   reapChild();          // reap child, return exit status
 
 		// Disable copying to avoid shallow-copying raw pointers and double-free.
 		private:

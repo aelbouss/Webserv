@@ -443,10 +443,8 @@ bool Response::writeFile(const std::string& path, const std::vector<char>& data)
 	while (written < data.size())
 	{
 		ssize_t chunk = write(fd, &data[written], data.size() - written);
-		if (chunk < 0)
+		if (chunk <= 0)
 		{
-			if (errno == EINTR)
-				continue;
 			close(fd);
 			unlink(path.c_str());
 			return false;
@@ -599,13 +597,16 @@ static void applyCgiOutputHeaders(Response& res, const std::string& output)
 			{
 				std::string key = trimCopy(line.substr(0, colon));
 				std::string value = trimCopy(line.substr(colon + 1));
-				if (key == "Status")
+				std::string keyLower = toLowerCopy(key);
+				if (keyLower == "status")
 				{
 					std::istringstream iss(value);
 					int code;
 					if (iss >> code)
 						res.setStatus(code);
 				}
+				else if (keyLower == "set-cookie")
+					res.addSetCookie(value);
 				else
 					res.setHeader(key, value);
 			}
@@ -617,32 +618,10 @@ static void applyCgiOutputHeaders(Response& res, const std::string& output)
 	res.setBody(body);
 }
 
-static std::string buildCgiCacheKey(const std::string& filePath,
-										 const std::string& requestPath,
-										 const std::string& method,
-										 const std::string& queryString,
-										 const std::vector<char>& requestBody,
-										 const Request* request)
-{
-	std::ostringstream key;
-	key << filePath << '\n'
-		<< requestPath << '\n'
-		<< method << '\n'
-		<< queryString << '\n';
-	key << requestBody.size() << '\n';
-	if (!requestBody.empty())
-		key.write(&requestBody[0], requestBody.size());
-	if (request)
-	{
-		key << '\n' << request->getHeader("host") << '\n';
-		key << request->getHeader("content-type") << '\n';
-		key << request->getHeader("content-length") << '\n';
-	}
-	return key.str();
-}
-
 Response::Response()
-	: _statusCode(200), _statusMessage("OK"), _file_path(""), _file_size(0), _file_range_start(0)
+	: _statusCode(200), _statusMessage("OK"),
+	  _cgiPending(false), _cgi(NULL),
+	  _file_path(""), _file_size(0), _file_range_start(0)
 {
 }
 
@@ -650,10 +629,58 @@ Response::Response(int statusCode, const std::string& body,
 				   const std::string& contentType)
 	: _statusCode(statusCode),
 	  _statusMessage(statusMessage(statusCode)),
-	  _body(body)
+	  _body(body),
+	  _cgiPending(false), _cgi(NULL),
+	  _file_size(0), _file_range_start(0)
 {
 	_headers["Content-Type"]   = contentType;
 	_headers["Content-Length"] = intToStr(body.size());
+}
+
+Response::~Response()
+{
+	// If the CGI handler was never detached (e.g. an error before hand-off),
+	// destroy it here so the child is reaped and memory freed.
+	if (_cgi)
+		delete _cgi;
+}
+
+bool Response::isCgiPending() const { return _cgiPending; }
+
+CgiHandler* Response::detachCgi()
+{
+	CgiHandler* tmp = _cgi;
+	_cgi = NULL;
+	_cgiPending = false;
+	return tmp;
+}
+
+bool Response::cgiExpectsInput() const { return !_cgiInput.empty(); }
+
+const std::string& Response::getCgiInput() const { return _cgiInput; }
+
+void Response::addSetCookie(const std::string& value)
+{
+	_setCookies.push_back(value);
+}
+
+void Response::cgiErrorPage(int code, const ServerConfig* server)
+{
+	buildErrorPage(code, server);
+}
+
+void Response::applyCgiOutput(const std::string& output)
+{
+	if (output.empty())
+	{
+		// CGI produced nothing -> bad gateway.
+		setStatus(502);
+		setHeader("Content-Type", "text/html");
+		setBody("<html><body><h1>502 Bad Gateway</h1></body></html>");
+		return;
+	}
+	setStatus(200);
+	applyCgiOutputHeaders(*this, output);
 }
 
 void Response::setDefaultHeaders()
@@ -705,34 +732,25 @@ bool Response::executeCgiHandler(const std::string& filePath,
 		return false;
 	}
 
-	static std::map<std::string, std::string> cgiOutputCache;
-	std::string cacheKey = buildCgiCacheKey(filePath, requestPath, method, queryString, requestBody, request);
-	std::map<std::string, std::string>::iterator cached = cgiOutputCache.find(cacheKey);
-	if (cached != cgiOutputCache.end())
-	{
-		setStatus(200);
-		applyCgiOutputHeaders(*this, cached->second);
-		return true;
-	}
-
-	CgiHandler cgi(filePath);
+	CgiHandler* cgi = new CgiHandler(filePath);
 	if (location)
-		cgi.initEnvFromLocation(req, *location);
+		cgi->initEnvFromLocation(req, *location);
 	else
-		cgi.initEnvBasic(req, filePath, requestPath.empty() ? "/" : requestPath, queryString);
+		cgi->initEnvBasic(req, filePath, requestPath.empty() ? "/" : requestPath, queryString);
 
-	short error_code = 0;
-	std::string output = cgi.execute(req, error_code);
+	short error_code = cgi->start(req);
 	if (error_code != 0)
 	{
+		delete cgi;
 		error(error_code, server);
 		return false;
 	}
 
-	cgiOutputCache[cacheKey] = output;
-
-	setStatus(200);
-	applyCgiOutputHeaders(*this, output);
+	// Hand off to the poll loop: record pending CGI + the POST body to feed.
+	_cgi = cgi;
+	_cgiPending = true;
+	if (!requestBody.empty())
+		_cgiInput.assign(requestBody.begin(), requestBody.end());
 	return true;
 }
 
@@ -819,29 +837,32 @@ void Response::build(const std::string& method,
 
 		if (method == "GET" && isDirectoryPath(filePath))
 		{
+			bool servedIndex = false;
 			if (!location->getIndexLocation().empty())
 			{
-				filePath = joinPath(filePath, location->getIndexLocation());
-				if (!fileExists(filePath))
+				std::string indexPath = joinPath(filePath, location->getIndexLocation());
+				if (fileExists(indexPath))
 				{
-					error(404, server);
+					filePath = indexPath;
+					servedIndex = true;
+				}
+			}
+			if (!servedIndex)
+			{
+				if (location->getAutoindex())
+				{
+					setStatus(200);
+					setHeader("Content-Type", "text/html");
+					setBody(buildAutoindexPage(filePath, requestPath));
 					setDefaultHeaders();
 					return;
 				}
-			}
-			else if (location->getAutoindex())
-			{
-				setStatus(200);
-				setHeader("Content-Type", "text/html");
-				setBody(buildAutoindexPage(filePath, requestPath));
-				setDefaultHeaders();
-				return;
-			}
-			else
-			{
-				error(403, server);
-				setDefaultHeaders();
-				return;
+				else
+				{
+					error(403, server);
+					setDefaultHeaders();
+					return;
+				}
 			}
 		}
 
@@ -1049,11 +1070,23 @@ void Response::serveFile(const std::string& filePath, const ServerConfig* server
 
 	setHeader("Accept-Ranges", "bytes");
 	setHeader("Content-Type", mimeType(filePath));
-	setHeader("Content-Length", intToStr(length));
 
-	_file_path = filePath;
-	_file_range_start = static_cast<off_t>(start);
-	_file_size = end + 1;   // stop offset — see note below
+	// Load the file fully into the response body. Sending is then driven by
+	// the poll loop one send() per POLLOUT, so no fd is read/written outside
+	// of poll() and there is no sendfile loop.
+	std::string content = readFile(filePath);
+	if (isRange)
+	{
+		if (start > content.size())
+			start = content.size();
+		if (length > content.size() - start)
+			length = content.size() - start;
+		_body = content.substr(start, length);
+	}
+	else
+		_body = content;
+	setHeader("Content-Length", intToStr(_body.size()));
+	// _file_path intentionally left empty: no separate file streaming.
 }
 
 void Response::serveCgi(const std::string& scriptPath,
@@ -1091,20 +1124,21 @@ void Response::serveCgi(const std::string& scriptPath,
 	req.markBodyConfigReady();
 	req.parse("", 0);
 
-	CgiHandler cgi(scriptPath);
-	cgi.initEnvBasic(req, scriptPath, requestPath.empty() ? "/" : requestPath, queryString);
+	CgiHandler* cgi = new CgiHandler(scriptPath);
+	cgi->initEnvBasic(req, scriptPath, requestPath.empty() ? "/" : requestPath, queryString);
 
-	short error_code = 0;
-	std::string output = cgi.execute(req, error_code);
-
+	short error_code = cgi->start(req);
 	if (error_code != 0)
 	{
+		delete cgi;
 		buildErrorPage(error_code, server);
 		return;
 	}
 
-	setStatus(200);
-	applyCgiOutputHeaders(*this, output);
+	_cgi = cgi;
+	_cgiPending = true;
+	if (!requestBody.empty())
+		_cgiInput.assign(requestBody.begin(), requestBody.end());
 }
 
 std::string Response::toString() const
@@ -1115,6 +1149,9 @@ std::string Response::toString() const
 	for (std::map<std::string, std::string>::const_iterator it = _headers.begin();
 		 it != _headers.end(); ++it)
 		out += it->first + ": " + it->second + "\r\n";
+	for (std::vector<std::string>::const_iterator it = _setCookies.begin();
+		 it != _setCookies.end(); ++it)
+		out += "Set-Cookie: " + *it + "\r\n";
 	out += "\r\n";
 	if (_file_path.empty())
 		out += _body;

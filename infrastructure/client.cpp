@@ -143,7 +143,9 @@ client::client()
 	  is_uploading(false), upload_completed(false), upload_error_code(0), upload_dir(""), upload_path(""),
 	  upload_url(""), upload_pending(""), upload_pending_offset(0),
 	  upload_is_multipart(false), upload_boundary(""), upload_buffer(""),
- 	  upload_headers_parsed(false) { last_activity = std::time(NULL); }
+ 	  upload_headers_parsed(false),
+	  cgi(NULL), cgi_in(""), cgi_in_off(0), cgi_out(""), cgi_server(NULL),
+	  cgi_start(0), cgi_active(false) { last_activity = std::time(NULL); }
 
 // Add activity timestamp initialization
 void client::touch_activity()
@@ -172,6 +174,36 @@ client&	client::operator = (const client& src)
 	this->file_offset = 0;
 	this->streaming_file = false;
 
+	// Reset all upload bookkeeping to safe defaults. A client is only ever
+	// copied at insertion time (before any upload/CGI is owned), so we must
+	// never inherit an fd or a half-initialized state from the source — doing
+	// so previously left upload_fd indeterminate and closed a random fd in the
+	// copy's destructor.
+	this->upload_fd = -1;
+	this->uploaded_bytes = 0;
+	this->max_upload_size = 0;
+	this->is_uploading = false;
+	this->upload_completed = false;
+	this->upload_error_code = 0;
+	this->upload_dir.clear();
+	this->upload_path.clear();
+	this->upload_url.clear();
+	this->upload_pending.clear();
+	this->upload_pending_offset = 0;
+	this->upload_is_multipart = false;
+	this->upload_boundary.clear();
+	this->upload_buffer.clear();
+	this->upload_headers_parsed = false;
+
+	// Never copy CGI ownership (raw pointer / child process).
+	this->cgi = NULL;
+	this->cgi_in.clear();
+	this->cgi_in_off = 0;
+	this->cgi_out.clear();
+	this->cgi_server = NULL;
+	this->cgi_start = 0;
+	this->cgi_active = false;
+
 	// Preserve last activity timestamp when copying client state
 	this->last_activity = src.last_activity;
 
@@ -186,6 +218,7 @@ client::client(const client& src)
 
 client::~client()
 {
+	clear_cgi();
 	reset_upload_state();
 }
 
@@ -444,8 +477,6 @@ bool client::flush_upload_pending()
 	ssize_t w = write(upload_fd, data, left);
 	if (w < 0)
 	{
-		if (errno == EAGAIN || errno == EWOULDBLOCK)
-			return false;
 		upload_error_code = 500;
 		return false;
 	}
@@ -493,15 +524,7 @@ int client::write_or_buffer(const char* data, size_t len)
 	}
 	if (w >= 0)
 	{
-		uploaded_bytes += static_cast<size_t>(w);
 		upload_pending.assign(data + w, data + len);
-		upload_pending_offset = 0;
-		uploaded_bytes += (len - static_cast<size_t>(w));
-		return BodySink::BODY_OK;
-	}
-	if (errno == EAGAIN || errno == EWOULDBLOCK)
-	{
-		upload_pending.assign(data, data + len);
 		upload_pending_offset = 0;
 		uploaded_bytes += len;
 		return BodySink::BODY_OK;
@@ -628,3 +651,51 @@ void client::onBodyEnd()
 	request.setUploadResult(upload_path, upload_url);
 }
 
+
+// ─── async CGI state ────────────────────────────────────────────────────────
+
+void client::attach_cgi(CgiHandler* handler, const std::string& input, const ServerConfig* server)
+{
+	cgi = handler;
+	cgi_in = input;
+	cgi_in_off = 0;
+	cgi_out.clear();
+	cgi_server = server;
+	cgi_start = std::time(NULL);
+	cgi_active = (handler != NULL);
+}
+
+bool client::cgi_is_active() const { return cgi_active; }
+
+bool client::cgi_has_input() const { return !cgi_in.empty(); }
+
+CgiHandler* client::get_cgi() { return cgi; }
+
+const std::string& client::get_cgi_input() const { return cgi_in; }
+
+size_t client::get_cgi_in_off() const { return cgi_in_off; }
+
+void client::add_cgi_in_off(size_t n) { cgi_in_off += n; }
+
+void client::append_cgi_out(const char* data, size_t n) { cgi_out.append(data, n); }
+
+const std::string& client::get_cgi_out() const { return cgi_out; }
+
+const ServerConfig* client::get_cgi_server() const { return cgi_server; }
+
+time_t client::get_cgi_start() const { return cgi_start; }
+
+void client::clear_cgi()
+{
+	if (cgi)
+	{
+		delete cgi;   // CgiHandler dtor closes any open pipe ends and reaps the child
+		cgi = NULL;
+	}
+	cgi_in.clear();
+	cgi_in_off = 0;
+	cgi_out.clear();
+	cgi_server = NULL;
+	cgi_start = 0;
+	cgi_active = false;
+}

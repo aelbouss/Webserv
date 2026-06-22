@@ -42,6 +42,15 @@ class	client : public BodySink
 		bool upload_headers_parsed;
 		int	write_or_buffer(const char* data, size_t len);
 
+		// ── async CGI state (owned while a CGI runs for this client) ──
+		CgiHandler*			cgi;
+		std::string			cgi_in;
+		size_t				cgi_in_off;
+		std::string			cgi_out;
+		const ServerConfig*	cgi_server;
+		time_t				cgi_start;
+		bool				cgi_active;
+
 		// Last activity timestamp for timeout handling
 		time_t last_activity;
 
@@ -96,6 +105,20 @@ class	client : public BodySink
 		off_t	get_file_offset() const;
 		void	set_file_offset(off_t off);
 		size_t	get_file_size() const;
+
+		// ── async CGI accessors ──
+		void	attach_cgi(CgiHandler* handler, const std::string& input, const ServerConfig* server);
+		bool	cgi_is_active() const;
+		bool	cgi_has_input() const;
+		CgiHandler*	get_cgi();
+		const std::string&	get_cgi_input() const;
+		size_t	get_cgi_in_off() const;
+		void	add_cgi_in_off(size_t n);
+		void	append_cgi_out(const char* data, size_t n);
+		const std::string&	get_cgi_out() const;
+		const ServerConfig*	get_cgi_server() const;
+		time_t	get_cgi_start() const;
+		void	clear_cgi();
 };
 
 # endif

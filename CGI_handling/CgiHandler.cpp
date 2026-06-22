@@ -29,6 +29,8 @@ CgiHandler::CgiHandler() {
 	this->_cgi_path = "";
 	this->_ch_env = NULL;
 	this->_argv = NULL;
+	this->pipe_in[0] = -1; this->pipe_in[1] = -1;
+	this->pipe_out[0] = -1; this->pipe_out[1] = -1;
 }
 
 CgiHandler::CgiHandler(std::string path)
@@ -38,10 +40,27 @@ CgiHandler::CgiHandler(std::string path)
 	this->_cgi_path = path;
 	this->_ch_env = NULL;
 	this->_argv = NULL;
+	this->pipe_in[0] = -1; this->pipe_in[1] = -1;
+	this->pipe_out[0] = -1; this->pipe_out[1] = -1;
 }
 
 CgiHandler::~CgiHandler() {
 
+	// Safety net: close any still-open parent pipe ends and reap the child
+	// (the multiplexer normally does this, but guard against leaks/zombies).
+	if (this->pipe_in[1] >= 0)
+		close(this->pipe_in[1]);
+	if (this->pipe_out[0] >= 0)
+		close(this->pipe_out[0]);
+	if (this->_cgi_pid > 0)
+	{
+		int status = 0;
+		if (waitpid(this->_cgi_pid, &status, WNOHANG) == 0)
+		{
+			kill(this->_cgi_pid, SIGKILL);
+			waitpid(this->_cgi_pid, &status, 0);
+		}
+	}
 	if (this->_ch_env)
 	{
 		for (int i = 0; this->_ch_env[i]; i++)
@@ -376,74 +395,31 @@ void CgiHandler::initEnv(Request& req, const std::vector<Location>::iterator it_
 	this->_argv[2] = NULL;
 }
 
-// ─── helpers ────────────────────────────────────────────────────────────────
+// ─── non-blocking CGI lifecycle ─────────────────────────────────────────────
 
-// Returns true if the fd is ready for the requested I/O within the remaining
-// deadline (deadline = start + timeoutSeconds).  Returns false on timeout.
-// direction: 0 = read, 1 = write.
-static bool waitFd(int fd, int direction, time_t start, int timeoutSeconds)
+short CgiHandler::start(Request& request)
 {
-	while (true)
-	{
-		time_t now = std::time(NULL);
-		if (now - start >= timeoutSeconds)
-			return false;
-
-		long remaining_us = (long)(timeoutSeconds - (now - start)) * 1000000L;
-
-		fd_set fds;
-		FD_ZERO(&fds);
-		FD_SET(fd, &fds);
-
-		struct timeval tv;
-		tv.tv_sec  = remaining_us / 1000000L;
-		tv.tv_usec = remaining_us % 1000000L;
-
-		fd_set *rfds = NULL;
-		fd_set *wfds = NULL;
-		if (direction == 0)
-			rfds = &fds;
-		else
-			wfds = &fds;
-
-		int ret = select(fd + 1, rfds, wfds, NULL, &tv);
-		if (ret < 0)
-		{
-			if (errno == EINTR)
-				continue;
-			return false;
-		}
-		if (ret == 0)
-			return false; // timeout
-		return true;
-	}
-}
-
-// ─── execute ────────────────────────────────────────────────────────────────
-
-std::string CgiHandler::execute(Request& request, short &error_code)
-{
-	const int timeoutSeconds = 5;
-
+	(void)request;
 	if (this->_argv == NULL || this->_ch_env == NULL || this->_argv[0] == NULL)
-	{
-		error_code = 500;
-		return std::string();
-	}
+		return 500;
 	if (pipe(pipe_in) < 0)
-	{
-		error_code = 500;
-		return std::string();
-	}
+		return 500;
 	if (pipe(pipe_out) < 0)
 	{
 		close(pipe_in[0]);
 		close(pipe_in[1]);
-		error_code = 500;
-		return std::string();
+		return 500;
 	}
 
 	this->_cgi_pid = fork();
+	if (this->_cgi_pid < 0)
+	{
+		close(pipe_in[0]);
+		close(pipe_in[1]);
+		close(pipe_out[0]);
+		close(pipe_out[1]);
+		return 500;
+	}
 	if (this->_cgi_pid == 0)
 	{
 		// ── child ──
@@ -453,128 +429,61 @@ std::string CgiHandler::execute(Request& request, short &error_code)
 		close(pipe_in[1]);
 		close(pipe_out[0]);
 		close(pipe_out[1]);
-		this->_exit_status = execve(this->_argv[0], this->_argv, this->_ch_env);
-		exit(this->_exit_status);
+		execve(this->_argv[0], this->_argv, this->_ch_env);
+		exit(1); // execve only returns on failure
 	}
-	else if (this->_cgi_pid > 0)
+
+	// ── parent ──
+	close(pipe_in[0]);   // child's read end
+	close(pipe_out[1]);  // child's write end
+	pipe_in[0]  = -1;
+	pipe_out[1] = -1;
+
+	// Make the parent ends non-blocking so the poll loop never stalls.
+	int flags;
+	flags = fcntl(pipe_in[1], F_GETFL, 0);
+	if (flags >= 0)
+		fcntl(pipe_in[1], F_SETFL, flags | O_NONBLOCK);
+	flags = fcntl(pipe_out[0], F_GETFL, 0);
+	if (flags >= 0)
+		fcntl(pipe_out[0], F_SETFL, flags | O_NONBLOCK);
+	return 0;
+}
+
+int CgiHandler::getReadFd() const  { return this->pipe_out[0]; }
+int CgiHandler::getWriteFd() const { return this->pipe_in[1]; }
+
+void CgiHandler::closeWriteFd()
+{
+	if (this->pipe_in[1] >= 0)
 	{
-		// ── parent ──
-		// Close child-side pipe ends immediately.
-		close(pipe_in[0]);
-		close(pipe_out[1]);
+		close(this->pipe_in[1]);
+		this->pipe_in[1] = -1;
+	}
+}
 
-		int write_fd = this->pipe_in[1];
-		int read_fd  = this->pipe_out[0];
+int CgiHandler::reapChild()
+{
+	int status = 0;
+	if (this->_cgi_pid > 0)
+	{
+		waitpid(this->_cgi_pid, &status, 0);
+		this->_cgi_pid = -1;
+	}
+	return status;
+}
 
-		// Make both ends non-blocking so we never stall the server loop.
-		int flags;
-		flags = fcntl(write_fd, F_GETFL, 0);
-		if (flags >= 0) fcntl(write_fd, F_SETFL, flags | O_NONBLOCK);
-		flags = fcntl(read_fd, F_GETFL, 0);
-		if (flags >= 0) fcntl(read_fd, F_SETFL, flags | O_NONBLOCK);	
-
-		time_t start = std::time(NULL);
-
-		// ── 1) Write POST body (if any) ──────────────────────────────────
-		if (request.getMethod() == Request::POST)
-		{
-			const std::vector<char>& body_vec = request.getBody();
-			size_t total = 0;
-			size_t len   = body_vec.size();
-
-			while (total < len)
-			{
-				// Wait until the pipe write-end is ready (or timeout).
-				if (!waitFd(write_fd, 1, start, timeoutSeconds))
-				{
-					close(write_fd);
-					close(read_fd);
-					kill(this->_cgi_pid, SIGKILL);
-					int st = 0;
-					waitpid(this->_cgi_pid, &st, 0);
-					error_code = 504;
-					return std::string();
-				}
-
-				ssize_t w = write(write_fd, &body_vec[total], len - total);
-				if (w > 0)
-				{
-					total += (size_t)w;
-				}
-				else if (w < 0)
-				{
-					if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
-						continue; // waitFd will re-check readiness next iteration
-					// Fatal write error.
-					close(write_fd);
-					close(read_fd);
-					kill(this->_cgi_pid, SIGKILL);
-					int st = 0;
-					waitpid(this->_cgi_pid, &st, 0);
-					error_code = 500;
-					return std::string();
-				}
-			}
-		}
-		// Signal EOF to the CGI script.
-		close(write_fd);
-
-		// ── 2) Read CGI output ───────────────────────────────────────────
-		std::string raw;
-		char        buf[4096];
-		bool        timed_out = false;
-
-		while (true)
-		{
-			if (!waitFd(read_fd, 0, start, timeoutSeconds))
-			{
-				timed_out = true;
-				break;
-			}
-
-			ssize_t r = read(read_fd, buf, sizeof(buf));
-			if (r > 0)
-			{
-				raw.append(buf, (size_t)r);
-			}
-			else if (r == 0)
-			{
-				break; // EOF – CGI finished writing
-			}
-			else
-			{
-				if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
-					continue;
-				break; // unexpected read error
-			}
-		}
-		close(read_fd);
-
-		// ── 3) Reap child ────────────────────────────────────────────────
+void CgiHandler::killChild()
+{
+	if (this->_cgi_pid > 0)
+	{
 		int status = 0;
-		if (this->_cgi_pid > 0)
+		if (waitpid(this->_cgi_pid, &status, WNOHANG) == 0)
 		{
-			if (timed_out)
-			{
-				kill(this->_cgi_pid, SIGKILL);
-				waitpid(this->_cgi_pid, &status, 0);
-				error_code = 504;
-				return std::string();
-			}
+			kill(this->_cgi_pid, SIGKILL);
 			waitpid(this->_cgi_pid, &status, 0);
 		}
-
-		return raw;
-	}
-	else
-	{
-		std::cout << "Fork failed" << std::endl;
-		close(pipe_in[0]);
-		close(pipe_in[1]);
-		close(pipe_out[0]);
-		close(pipe_out[1]);
-		error_code = 500;
-		return std::string();
+		this->_cgi_pid = -1;
 	}
 }
 

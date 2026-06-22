@@ -17,6 +17,14 @@ class Response
 		Response();
 		Response(int statusCode, const std::string& body,
 				 const std::string& contentType);
+		~Response();
+
+	private:
+		// Response owns a raw CgiHandler* during async CGI setup; forbid copying
+		// to avoid double-free. It is only ever used as a single stack local.
+		Response(const Response&);
+		Response& operator=(const Response&);
+	public:
 
 		// Unified build method with optional location and server.
 		void build(const std::string& method,
@@ -54,11 +62,29 @@ class Response
 
 		std::string toString() const;
 
+		// ── Async (non-blocking) CGI support ──
+		// When build() routes to a CGI script it forks the child and sets the
+		// pipe ends non-blocking, then records the pending state here instead
+		// of blocking. The multiplexer registers the pipes in the poll loop.
+		bool               isCgiPending() const;
+		CgiHandler*        detachCgi();              // transfer ownership out
+		bool               cgiExpectsInput() const;  // POST body to feed?
+		const std::string& getCgiInput() const;
+		void               applyCgiOutput(const std::string& output);
+		void               cgiErrorPage(int code, const ServerConfig* server);
+		// Multiple Set-Cookie headers can coexist (server session + CGI).
+		void               addSetCookie(const std::string& value);
+
 	private:
 		int                                 _statusCode;
 		std::string                         _statusMessage;
 		std::map<std::string, std::string>  _headers;
 		std::string                         _body;
+		std::vector<std::string>            _setCookies;
+		// Async CGI state (owned until detachCgi()).
+		bool                                _cgiPending;
+		CgiHandler*                         _cgi;
+		std::string                         _cgiInput;
 		// If serving a file, store path and size; body will be empty.
 		std::string                         _file_path;
 		size_t                              _file_size;
