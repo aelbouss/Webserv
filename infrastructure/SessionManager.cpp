@@ -7,7 +7,7 @@
 #include <iomanip>
 
 static const size_t kSessionIdBytes = 16;
-static const size_t kSessionIdHexLen = kSessionIdBytes * 2;
+// static const size_t kSessionIdHexLen = kSessionIdBytes * 2;
 
 SessionManager::SessionManager()
 	: _cookieName("WEBSERVSID"), _ttlSeconds(3600), _maxSessions(10000)
