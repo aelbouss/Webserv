@@ -22,8 +22,6 @@ class CgiHandler {
 		CgiHandler(std::string path);
 		~CgiHandler();
 
-		void initEnv(Request& req, const std::vector<Location>::iterator it_loc);
-		void initEnvCgi(Request& req, const std::vector<Location>::iterator it_loc);
 		void initEnvBasic(Request& req, const std::string& scriptPath,
 						  const std::string& requestUri,
 						  const std::string& queryString);

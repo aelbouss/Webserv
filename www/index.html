@@ -1,32 +1,25 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>webserv // protocol console</title>
+
 <style>
   :root{
-    --ink:#070b14; --panel:#0c1322; --panel2:#0a1019;
-    --line:rgba(120,200,255,.12); --line2:rgba(120,200,255,.22);
-    --txt:#e6f0fb; --dim:#7d93ad; --faint:#475569;
-    --cyan:#22d3ee; --mag:#f472b6; --amber:#fbbf24; --green:#34d399; --red:#fb7185;
+    --ink:#070b14;--panel:#0c1322;--panel2:#0a1019;
+    --line:rgba(120,200,255,.12);--line2:rgba(120,200,255,.22);
+    --txt:#e6f0fb;--dim:#7d93ad;--faint:#475569;
+    --cyan:#22d3ee;--mag:#f472b6;--amber:#fbbf24;--green:#34d399;--red:#fb7185;
     --mono:ui-monospace,"JetBrains Mono","SF Mono",Menlo,Consolas,monospace;
     --sans:system-ui,"Segoe UI",Roboto,sans-serif;
   }
-  *{box-sizing:border-box}
-  html,body{margin:0}
+  *{box-sizing:border-box;margin:0;padding:0}
   body{
     background:
-      radial-gradient(1100px 500px at 80% -10%, rgba(34,211,238,.07), transparent 60%),
-      radial-gradient(900px 600px at -10% 110%, rgba(244,114,182,.06), transparent 60%),
+      radial-gradient(1100px 500px at 80% -10%,rgba(34,211,238,.07),transparent 60%),
+      radial-gradient(900px 600px at -10% 110%,rgba(244,114,182,.06),transparent 60%),
       var(--ink);
-    color:var(--txt); font-family:var(--sans); line-height:1.5;
-    -webkit-font-smoothing:antialiased;
+    color:var(--txt);font-family:var(--sans);line-height:1.5;
+    -webkit-font-smoothing:antialiased;min-height:100vh;
   }
   a{color:var(--cyan);text-decoration:none}
   a:hover{text-decoration:underline}
 
-  /* ── header ─────────────────────────────────────────────── */
   header{
     padding:26px clamp(16px,4vw,48px) 18px;
     border-bottom:1px solid var(--line);
@@ -36,299 +29,147 @@
   .brand b{color:var(--cyan)}
   .brand .slash{color:var(--mag);margin:0 .35em}
   .tagline{color:var(--dim);font:.72rem/1.4 var(--mono);letter-spacing:2px;text-transform:uppercase;margin-top:4px}
-  .conn{display:flex;align-items:center;gap:9px;font:.72rem var(--mono);letter-spacing:1px;color:var(--dim);text-transform:uppercase}
-  .dot{width:9px;height:9px;border-radius:50%;background:var(--faint);box-shadow:0 0 0 0 transparent}
-  .dot.live{background:var(--green);box-shadow:0 0 12px var(--green)}
-  .dot.down{background:var(--red);box-shadow:0 0 12px var(--red)}
 
-  /* ── signature: the wire ────────────────────────────────── */
-  .wire-wrap{padding:22px clamp(16px,4vw,48px);border-bottom:1px solid var(--line);
-    display:grid;grid-template-columns:1fr;gap:14px}
-  .wire{position:relative;height:64px;display:flex;align-items:center;justify-content:space-between}
-  .node{display:flex;flex-direction:column;align-items:center;gap:6px;z-index:2}
-  .node .ring{width:42px;height:42px;border-radius:50%;border:1.5px solid var(--line2);
-    display:grid;place-content:center;font:.7rem var(--mono);color:var(--cyan);background:var(--panel)}
-  .node small{font:.62rem var(--mono);letter-spacing:1.5px;color:var(--dim);text-transform:uppercase}
-  .track{position:absolute;left:46px;right:46px;top:50%;height:2px;transform:translateY(-50%);
-    background:linear-gradient(90deg,var(--line2),rgba(120,200,255,.06),var(--line2));border-radius:2px;overflow:visible}
-  .pulse{position:absolute;top:50%;left:0;width:10px;height:10px;border-radius:50%;
-    transform:translate(-50%,-50%) scale(0);background:var(--cyan);box-shadow:0 0 14px var(--cyan);opacity:0}
-  .readout{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;font-family:var(--mono)}
-  .code{font-size:2.4rem;font-weight:800;letter-spacing:-1px;color:var(--dim);transition:color .2s}
-  .code.s2{color:var(--green)} .code.s3{color:var(--amber)}
-  .code.s4{color:var(--mag)} .code.s5{color:var(--red)} .code.s0{color:var(--faint)}
-  .rmeta{font-size:.8rem;color:var(--dim)}
-  .rmeta b{color:var(--txt);font-weight:600}
+  .hero{
+    padding:clamp(40px,8vw,80px) clamp(16px,4vw,48px) clamp(32px,6vw,60px);
+    text-align:center;border-bottom:1px solid var(--line);
+  }
+  .team-badge{
+    display:inline-flex;align-items:center;gap:10px;
+    background:rgba(12,19,34,.8);border:1px solid var(--line2);
+    border-radius:40px;padding:6px 18px 6px 10px;margin-bottom:28px;
+    font:.72rem var(--mono);letter-spacing:2px;text-transform:uppercase;color:var(--dim);
+  }
+  .team-badge .dots{display:flex;gap:5px}
+  .team-badge .dot{width:8px;height:8px;border-radius:50%}
+  .team-badge .dot.r{background:var(--red);box-shadow:0 0 8px var(--red)}
+  .team-badge .dot.w{background:#e6f0fb}
 
-  /* ── layout ─────────────────────────────────────────────── */
-  main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,440px);gap:0}
-  @media(max-width:920px){main{grid-template-columns:1fr}}
-  .panels{padding:clamp(16px,3vw,32px);display:grid;gap:18px;align-content:start}
-  .console{border-left:1px solid var(--line);background:var(--panel2);
-    position:sticky;top:0;align-self:start;height:100vh;display:flex;flex-direction:column}
-  @media(max-width:920px){.console{position:static;height:auto;border-left:none;border-top:1px solid var(--line)}}
+  .team-name{
+    font-size:clamp(2.2rem,6vw,3.8rem);font-weight:800;letter-spacing:-1.5px;
+    background:linear-gradient(135deg,var(--txt) 0%,var(--cyan) 50%,var(--mag) 100%);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    margin-bottom:12px;line-height:1.1;
+  }
+  .team-sub{color:var(--dim);font:.75rem var(--mono);letter-spacing:2px;text-transform:uppercase}
 
-  /* ── cards ──────────────────────────────────────────────── */
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
-  .card h2{margin:0 0 4px;font-size:.95rem;font-weight:700;letter-spacing:.2px}
-  .card .desc{margin:0 0 14px;color:var(--dim);font-size:.82rem}
-  .eyebrow{font:.62rem var(--mono);letter-spacing:2px;text-transform:uppercase;color:var(--mag);margin-bottom:8px}
-  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .row + .row{margin-top:10px}
+  .members-grid{
+    display:flex;justify-content:center;gap:clamp(24px,4vw,48px);flex-wrap:wrap;
+    padding:clamp(40px,6vw,64px) clamp(16px,4vw,48px);
+    border-bottom:1px solid var(--line);
+  }
+  .member{
+    display:flex;flex-direction:column;align-items:center;gap:14px;
+    width:180px;
+  }
+  .avatar-wrap{position:relative}
+  .avatar{
+    width:120px;height:120px;border-radius:50%;
+    border:2px solid var(--line2);
+    background:var(--panel);
+    display:grid;place-content:center;
+    font-size:2.6rem;font-weight:800;color:var(--cyan);
+    position:relative;overflow:hidden;
+    transition:border-color .2s,box-shadow .2s;
+  }
+  .avatar img{
+    z-index: 1;
+    width:100%;height:100%;object-fit:cover;border-radius:50%}
+  .member:hover .avatar{border-color:rgba(34,211,238,.5);box-shadow:0 0 24px rgba(34,211,238,.15)}
+  .member-initials{font-family:var(--mono);font-size:2rem;font-weight:700}
+  .avatar-ring{
+    z-index: 0;
+    position:absolute;inset:-4px;border-radius:50%;
+    border:1.5px solid transparent;
+    background:linear-gradient(var(--panel),var(--panel)) padding-box,
+              linear-gradient(135deg,var(--cyan),var(--mag)) border-box;
+    pointer-events:none;opacity:0;transition:opacity .2s;
+  }
+  .member:hover .avatar-ring{opacity:1}
+  .member-name{
+    font-weight:700;font-size:1rem;letter-spacing:-.2px;text-align:center;
+  }
+  .member-handle{
+    font:.68rem var(--mono);color:var(--dim);letter-spacing:1px;text-transform:uppercase;text-align:center;
+  }
 
-  button{font-family:var(--mono);font-size:.78rem;cursor:pointer;color:var(--txt);
-    background:#101828;border:1px solid var(--line2);border-radius:8px;padding:8px 13px;transition:.12s}
-  button:hover{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 0 1px rgba(34,211,238,.25)}
-  button:active{transform:translateY(1px)}
-  button .verb{color:var(--mag);font-weight:700;margin-right:6px}
-  button:hover .verb{color:var(--mag)}
-  button.danger:hover{border-color:var(--red);color:var(--red);box-shadow:0 0 0 1px rgba(251,113,133,.25)}
-  button.danger:hover .verb{color:var(--red)}
+  .cta-section{
+    padding:clamp(32px,5vw,56px) clamp(16px,4vw,48px);
+    display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center;
+  }
+  .cta-label{font:.72rem var(--mono);letter-spacing:2px;text-transform:uppercase;color:var(--mag)}
+  .cta-title{font-size:clamp(1.2rem,3vw,1.8rem);font-weight:700;letter-spacing:-.3px}
+  .cta-desc{color:var(--dim);font-size:.88rem;max-width:440px}
+  .cta-btn{
+    display:inline-flex;align-items:center;gap:8px;
+    font-family:var(--mono);font-size:.82rem;font-weight:700;letter-spacing:.5px;
+    color:var(--ink);background:var(--cyan);
+    border:none;border-radius:10px;padding:12px 28px;
+    cursor:pointer;transition:opacity .15s,transform .1s;
+    text-transform:uppercase;
+  }
+  .cta-btn:hover{opacity:.85}
+  .cta-btn:active{transform:translateY(1px)}
+  .cta-btn .arrow{font-size:1.1rem;transition:transform .15s}
+  .cta-btn:hover .arrow{transform:translateX(3px)}
 
-  input,textarea,select{font-family:var(--mono);font-size:.78rem;color:var(--txt);
-    background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:7px 9px}
-  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--cyan)}
-  input[type=text],input[type=number]{width:78px}
-  input.wide{width:170px}
-  textarea{width:100%;min-height:62px;resize:vertical}
-  label{font:.7rem var(--mono);color:var(--dim)}
-
-  /* ── console log ────────────────────────────────────────── */
-  .console-head{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;
-    align-items:center;justify-content:space-between}
-  .console-head h3{margin:0;font:.7rem var(--mono);letter-spacing:2px;text-transform:uppercase;color:var(--dim)}
-  .log{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px;font-family:var(--mono)}
-  .log:empty::after{content:"// fire a request to see the raw exchange";color:var(--faint);font-size:.78rem;padding:8px}
-  .tx{border:1px solid var(--line);border-radius:9px;background:#0b1220;overflow:hidden;animation:in .18s ease}
-  @keyframes in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-  .tx-top{display:flex;align-items:center;gap:8px;padding:9px 11px;border-bottom:1px solid var(--line);font-size:.76rem}
-  .tx-top .v{color:var(--mag);font-weight:700}
-  .tx-top .p{color:var(--txt);word-break:break-all;flex:1}
-  .badge{font-weight:700;padding:1px 8px;border-radius:20px;font-size:.72rem;border:1px solid currentColor}
-  .badge.s2{color:var(--green)} .badge.s3{color:var(--amber)}
-  .badge.s4{color:var(--mag)} .badge.s5{color:var(--red)} .badge.s0{color:var(--faint)}
-  .tx-meta{padding:7px 11px;color:var(--faint);font-size:.7rem;border-bottom:1px solid var(--line)}
-  details{padding:7px 11px;border-bottom:1px solid var(--line)}
-  details:last-child{border-bottom:none}
-  summary{cursor:pointer;color:var(--dim);font-size:.7rem;letter-spacing:1px;text-transform:uppercase;list-style:none}
-  summary::-webkit-details-marker{display:none}
-  summary::before{content:"▸ ";color:var(--cyan)}
-  details[open] summary::before{content:"▾ "}
-  pre{margin:7px 0 0;white-space:pre-wrap;word-break:break-word;font-size:.74rem;color:#bcd0e6;max-height:260px;overflow:auto}
-  .hint{color:var(--faint);font-size:.72rem;margin-top:8px;font-family:var(--mono)}
-  footer{padding:18px clamp(16px,4vw,48px);color:var(--faint);font:.7rem var(--mono);border-top:1px solid var(--line)}
+  footer{
+    padding:18px clamp(16px,4vw,48px);
+    color:var(--faint);font:.7rem var(--mono);
+    border-top:1px solid var(--line);text-align:center;
+  }
 </style>
-</head>
-<body>
+
 <header>
   <div>
-    <div class="brand"><b>webserv</b><span class="slash">//</span>protocol console</div>
-    <div class="tagline">manual test harness · HTTP/1.1</div>
+    <div class="brand"><b>webserv</b><span class="slash">//</span>home</div>
+    <div class="tagline">42 Network - HTTP/1.1 from scratch</div>
   </div>
-  <div class="conn"><span id="cdot" class="dot"></span><span id="cstat">connecting…</span></div>
 </header>
 
-<section class="wire-wrap">
-  <div class="wire">
-    <div class="node"><div class="ring">YOU</div><small>client</small></div>
-    <div class="track"><div id="pulse" class="pulse"></div></div>
-    <div class="node"><div class="ring" style="color:var(--mag);border-color:rgba(244,114,182,.35)">SRV</div><small>webserv</small></div>
+<section class="hero">
+  <div class="team-badge">
+    <div class="dots"><div class="dot r"></div><div class="dot w"></div></div>
+    team - webserv - 42
   </div>
-  <div class="readout">
-    <span id="code" class="code s0">···</span>
-    <span class="rmeta" id="rmeta">no transactions yet — every button below sends one real request to this server.</span>
+  <div class="team-name">Winners<span style="-webkit-text-fill-color:var(--red)">2005</span></div>
+  <div class="team-sub">42 Network - Webserv Project</div>
+</section>
+
+<section class="members-grid">
+  <div class="member">
+    <div class="avatar-wrap">
+        <div class="avatar"> <img src="/assets/maelmahf.jpg" alt="Mohammed Elmahfoudi"></div>
+      <div class="avatar-ring"></div>
+    </div>
+    <div class="member-name">Mohammed Elmahfoudi</div>
+    <div class="member-handle">maelmahf</div>
+  </div>
+  <div class="member">
+    <div class="avatar-wrap">
+        <div class="avatar"> <img src="/assets/mohben-t.jpg" alt="Mohamed Ben Talha"></div>
+      <div class="avatar-ring" style="background:linear-gradient(var(--panel),var(--panel)) padding-box,linear-gradient(135deg,var(--mag),var(--amber)) border-box"></div>
+    </div>
+    <div class="member-name">Mohamed Ben Talha</div>
+    <div class="member-handle">mohben-t</div>
+  </div>
+  <div class="member">
+    <div class="avatar-wrap">
+        <div class="avatar"> <img src="/assets/aelbouss.jpg" alt="Anass Elboussaili"></div>
+      <div class="avatar-ring" style="background:linear-gradient(var(--panel),var(--panel)) padding-box,linear-gradient(135deg,var(--amber),var(--green)) border-box"></div>
+    </div>
+    <div class="member-name">Anass Elboussaili</div>
+    <div class="member-handle">aelbouss</div>
   </div>
 </section>
 
-<main>
-  <div class="panels">
+<section class="cta-section">
+  <div class="cta-label">protocol console</div>
+  <div class="cta-title">Ready to test the server?</div>
+  <div class="cta-desc">Fire real HTTP/1.1 requests, inspect raw responses, test CGI, uploads, sessions, and error handling - live.</div>
+  <a href="test.html" style="text-decoration:none">
+    <button class="cta-btn">Open test console <span class="arrow">-></span></button>
+  </a>
+</section>
 
-    <div class="card">
-      <div class="eyebrow">methods</div>
-      <h2>GET — static files</h2>
-      <p class="desc">Reads files straight off disk. Try a real file, then a missing one.</p>
-      <div class="row">
-        <button onclick="req('GET','/')"><span class="verb">GET</span>/ (this page)</button>
-        <button onclick="req('GET','/assets/notes.txt')"><span class="verb">GET</span>/assets/notes.txt</button>
-        <button onclick="req('GET','/private/secret.txt')"><span class="verb">GET</span>/private/secret.txt</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="eyebrow">methods</div>
-      <h2>POST — send a body</h2>
-      <p class="desc">Posts your text to a CGI script that echoes it back, so you can see the body survived the trip.</p>
-      <div class="row"><textarea id="postbody">hello=webserv&from=rafih</textarea></div>
-      <div class="row"><button onclick="req('POST','/cgi-bin/echo.py',{body:document.getElementById('postbody').value,headers:{'Content-Type':'application/x-www-form-urlencoded'}})"><span class="verb">POST</span>/cgi-bin/echo.py</button></div>
-    </div>
-
-    <div class="card">
-      <div class="eyebrow">files</div>
-      <h2>Upload &amp; download</h2>
-      <p class="desc">Upload a file, then fetch it straight back from the uploads folder.</p>
-      <div class="row">
-        <input id="upname" class="wide" type="text" value="note.txt" style="width:150px">
-        <input id="upbody" class="wide" type="text" value="uploaded at run time">
-      </div>
-      <div class="row">
-        <button onclick="uploadFile()"><span class="verb">POST</span>upload</button>
-        <button onclick="req('GET','/uploads/'+document.getElementById('upname').value)"><span class="verb">GET</span>fetch it back</button>
-        <button class="danger" onclick="req('DELETE','/uploads/'+document.getElementById('upname').value)"><span class="verb">DEL</span>delete it</button>
-      </div>
-      <div class="hint">tip: paths shift to /uploads/&lt;name&gt;/&lt;name&gt; for some bodies — the listing below shows the truth.</div>
-    </div>
-
-    <div class="card">
-      <div class="eyebrow">cgi · #1</div>
-      <h2>CGI — query calculator</h2>
-      <p class="desc">A Python CGI that reads the query string and returns JSON.</p>
-      <div class="row">
-        <label>a</label><input id="ca" type="number" value="6">
-        <label>b</label><input id="cb" type="number" value="7">
-        <select id="cop"><option value="add">+</option><option value="sub">−</option><option value="mul">×</option><option value="div">÷</option></select>
-        <button onclick="req('GET','/cgi-bin/calc.py?a='+ca.value+'&b='+cb.value+'&op='+cop.value)"><span class="verb">GET</span>calc.py</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="eyebrow">cgi · #2 · cookies + session</div>
-      <h2>Session counter</h2>
-      <p class="desc">Each call increments a per-session visit count the server keeps for your cookie. Click it a few times — the number climbs only for you.</p>
-      <div class="row">
-        <button onclick="req('GET','/cgi-bin/session.py')"><span class="verb">GET</span>session.py</button>
-        <button onclick="showCookies()"><span class="verb">JS</span>cookies in browser</button>
-      </div>
-      <div class="hint">WEBSERVSID is set by the server and marked HttpOnly, so it's invisible to JS by design — that's correct, secure behaviour. DEMOSESSION is the CGI's own cookie.</div>
-    </div>
-
-    <div class="card">
-      <div class="eyebrow">listing &amp; redirects</div>
-      <h2>Directory listing &amp; redirect</h2>
-      <p class="desc">Autoindex renders a folder; the redirect sends the browser elsewhere (watch the address bar / Network tab).</p>
-      <div class="row">
-        <button onclick="req('GET','/uploads/')"><span class="verb">GET</span>/uploads/ (autoindex)</button>
-        <button onclick="req('GET','/files/')"><span class="verb">GET</span>/files/ (autoindex)</button>
-        <a href="/old"><button><span class="verb">→</span>open /old (302 redirect)</button></a>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="eyebrow">status codes</div>
-      <h2>Error handling</h2>
-      <p class="desc">Each of these is supposed to fail — with the right code and a custom page.</p>
-      <div class="row">
-        <button onclick="req('GET','/does-not-exist')"><span class="verb">GET</span>404</button>
-        <button onclick="req('GET','/private/')"><span class="verb">GET</span>403</button>
-        <button class="danger" onclick="req('DELETE','/files/')"><span class="verb">DEL</span>405</button>
-        <button class="danger" onclick="tooBig()"><span class="verb">POST</span>413 (oversized)</button>
-        <button class="danger" onclick="req('BREW','/')"><span class="verb">BREW</span>501 (unknown)</button>
-      </div>
-    </div>
-
-  </div>
-
-  <aside class="console">
-    <div class="console-head">
-      <h3>transaction log</h3>
-      <button onclick="document.getElementById('log').innerHTML=''">clear</button>
-    </div>
-    <div id="log" class="log"></div>
-  </aside>
-</main>
-
-<footer>served by your webserv build · all requests are real and same-origin · run: <span style="color:var(--cyan)">./webserv webserv.conf</span></footer>
-
-<script>
-  var ca=document.getElementById('ca'),cb=document.getElementById('cb'),cop=document.getElementById('cop');
-  var pulse=document.getElementById('pulse');
-
-  function cls(s){ if(!s) return 's0'; return 's'+String(s)[0]; }
-
-  function animate(klass){
-    var color={s2:'var(--green)',s3:'var(--amber)',s4:'var(--mag)',s5:'var(--red)',s0:'var(--cyan)'}[klass]||'var(--cyan)';
-    pulse.style.background=color; pulse.style.boxShadow='0 0 14px '+color;
-    pulse.animate(
-      [{left:'0%',opacity:0,transform:'translate(-50%,-50%) scale(0)'},
-       {left:'18%',opacity:1,transform:'translate(-50%,-50%) scale(1)',offset:.18},
-       {left:'100%',opacity:1,transform:'translate(-50%,-50%) scale(1)',offset:.5},
-       {left:'100%',opacity:1,offset:.55},
-       {left:'0%',opacity:1,transform:'translate(-50%,-50%) scale(1)',offset:.95},
-       {left:'0%',opacity:0,transform:'translate(-50%,-50%) scale(0)'}],
-      {duration:760,easing:'cubic-bezier(.5,0,.5,1)'});
-  }
-
-  function esc(s){return s.replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
-
-  function setReadout(status,statusText,ms,note){
-    var code=document.getElementById('code'), rmeta=document.getElementById('rmeta');
-    code.className='code '+cls(status);
-    code.textContent=status?status:'ERR';
-    rmeta.innerHTML=note?note:('<b>'+(status||'')+'</b> '+esc(statusText||'')+' · '+ms+' ms');
-  }
-
-  function logTx(method,path,status,statusText,ms,headers,body,note){
-    var k=cls(status);
-    var log=document.getElementById('log');
-    var tx=document.createElement('div'); tx.className='tx';
-    var hdr=headers?Object.keys(headers).map(function(h){return h+': '+headers[h];}).join('\n'):'(none readable)';
-    var shownBody=body==null?'':body;
-    if(shownBody.length>4000) shownBody=shownBody.slice(0,4000)+'\n… [truncated]';
-    tx.innerHTML=
-      '<div class="tx-top"><span class="v">'+esc(method)+'</span>'+
-        '<span class="p">'+esc(path)+'</span>'+
-        '<span class="badge '+k+'">'+(status?status:'ERR')+'</span></div>'+
-      '<div class="tx-meta">'+(note?esc(note)+' · ':'')+esc(statusText||'')+' · '+ms+' ms</div>'+
-      '<details open><summary>response headers</summary><pre>'+esc(hdr)+'</pre></details>'+
-      '<details'+(shownBody?' open':'')+'><summary>response body</summary><pre>'+esc(shownBody||'(empty)')+'</pre></details>';
-    log.insertBefore(tx,log.firstChild);
-  }
-
-  function req(method,path,opts){
-    opts=opts||{};
-    var t0=performance.now();
-    animate('s0');
-    var init={method:method};
-    if(opts.body!=null) init.body=opts.body;
-    if(opts.headers) init.headers=opts.headers;
-    fetch(path,init).then(function(r){
-      return r.text().then(function(text){
-        var ms=Math.round(performance.now()-t0);
-        var headers={}; r.headers.forEach(function(v,k){headers[k]=v;});
-        setReadout(r.status,r.statusText,ms);
-        animate(cls(r.status));
-        logTx(method,path,r.status,r.statusText,ms,headers,text);
-      });
-    }).catch(function(e){
-      var ms=Math.round(performance.now()-t0);
-      setReadout(0,'network error',ms,'<b>ERR</b> '+esc(String(e.message||e)));
-      logTx(method,path,0,'network / blocked',ms,null,String(e.message||e),'fetch failed');
-    });
-  }
-
-  function uploadFile(){
-    var name=document.getElementById('upname').value||'note.txt';
-    var body=document.getElementById('upbody').value;
-    req('POST','/uploads/'+name,{body:body,headers:{'Content-Type':'text/plain'}});
-  }
-
-  function tooBig(){
-    var big=new Array(2*1024*1024).join('A'); // ~2 MB, over the 1 MB cap
-    req('POST','/uploads/too-big.txt',{body:big,headers:{'Content-Type':'text/plain'}});
-  }
-
-  function showCookies(){
-    var c=document.cookie||'(no JS-visible cookies — HttpOnly ones are hidden on purpose)';
-    setReadout(200,'document.cookie',0,'<b>cookies</b> '+esc(c));
-    logTx('JS','document.cookie',200,'browser-side',0,null,c,'cookies the browser will send back');
-  }
-
-  // connection indicator
-  (function ping(){
-    var dot=document.getElementById('cdot'),st=document.getElementById('cstat');
-    fetch('/',{method:'GET'}).then(function(r){
-      dot.className='dot live'; st.textContent='online · '+location.host;
-    }).catch(function(){ dot.className='dot down'; st.textContent='no response'; });
-  })();
-</script>
-</body>
-</html>
+<footer>served by your webserv build - <span style="color:var(--cyan)">Winners2005</span> - 42 Network</footer>

@@ -43,41 +43,40 @@ static void close_connection(int fd)
 		close(fd);
 }
 
+multiplexing::multiplexing() {}
 
-		multiplexing::multiplexing() {}
+multiplexing&	multiplexing::operator = (const multiplexing& src)
+{ 
+	if (this == &src)
+		return (*this);	
+	return *this ;
+}
+multiplexing::multiplexing( const multiplexing& src)
+{
+	*this = src ;
+}
 
-		multiplexing&	multiplexing::operator = (const multiplexing& src)
-		{ 
-			if (this == &src)
-				return (*this);	
-			return *this ;
-		}
-		multiplexing::multiplexing( const multiplexing& src)
-		{
-			*this = src ;
-		}
+multiplexing::~multiplexing(){}
 
-		multiplexing::~multiplexing(){}
+size_t	multiplexing::master_socket_index(int fd) const
+{
+	for (size_t i = 0; i < master_sockets.size(); ++i)
+	{
+		if (master_sockets[i] == fd)
+			return i;
+	}
+	return master_sockets.size();
+}
 
-		size_t	multiplexing::master_socket_index(int fd) const
-		{
-			for (size_t i = 0; i < master_sockets.size(); ++i)
-			{
-				if (master_sockets[i] == fd)
-					return i;
-			}
-			return master_sockets.size();
-		}
+void	multiplexing::set_server_configs(const std::vector<ServerConfig>& servers)
+{
+	server_configs = servers;
+}
 
-		void	multiplexing::set_server_configs(const std::vector<ServerConfig>& servers)
-		{
-			server_configs = servers;
-		}
-
-		void	multiplexing::set_server_groups(const std::vector< std::vector<size_t> >& groups)
-		{
-			server_groups = groups;
-		}
+void	multiplexing::set_server_groups(const std::vector< std::vector<size_t> >& groups)
+{
+	server_groups = groups;
+}
 
 const ServerConfig* multiplexing::select_server_for_request(
     const Request& request,

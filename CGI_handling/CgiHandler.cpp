@@ -290,111 +290,6 @@ void CgiHandler::initEnvFromLocation(Request& req, const Location& location)
 	this->_argv[2] = NULL;
 }
 
-void CgiHandler::initEnvCgi(Request& req, const std::vector<Location>::iterator it_loc)
-{
-	std::string cgi_exec = ("cgi-bin/" + it_loc->getCgiPath()[0]).c_str();
-	char    *cwd = getcwd(NULL, 0);
-	if(_cgi_path[0] != '/')
-	{
-		std::string tmp(cwd);
-		tmp.append("/");
-		if(_cgi_path.length() > 0)
-			_cgi_path.insert(0, tmp);
-	}
-	if(req.getMethod() == Request::POST)
-	{
-		std::stringstream out;
-		out << req.getBody().size();
-		this->_env["CONTENT_LENGTH"] = out.str();
-		this->_env["CONTENT_TYPE"] = req.getHeader("content-type");
-	}
-
-    this->_env["GATEWAY_INTERFACE"] = std::string("CGI/1.1");
-	this->_env["SCRIPT_NAME"] = cgi_exec;
-    this->_env["SCRIPT_FILENAME"] = this->_cgi_path;
-    this->_env["PATH_INFO"] = this->_cgi_path;
-    this->_env["PATH_TRANSLATED"] = this->_cgi_path;
-    this->_env["REQUEST_URI"] = this->_cgi_path;
-	if (!req.getRemoteAddr().empty())
-		this->_env["REMOTE_ADDR"] = req.getRemoteAddr();
-    this->_env["SERVER_NAME"] = req.getHeader("host");
-    this->_env["SERVER_PORT"] ="8002";
-	this->_env["REQUEST_METHOD"] = req.getMethodStr();
-    this->_env["SERVER_PROTOCOL"] = "HTTP/1.1";
-    this->_env["REDIRECT_STATUS"] = "200";
-	this->_env["SERVER_SOFTWARE"] = "WEBSERV";
-
-	std::map<std::string, std::string> request_headers = req.getHeaders();
-	for (std::map<std::string, std::string>::iterator it = request_headers.begin();
-		 it != request_headers.end(); ++it)
-	{
-		std::string key = "HTTP_" + normalizeHeaderKey(it->first);
-		_env[key] = it->second;
-	}
-	this->_ch_env = (char **)calloc(this->_env.size() + 1, sizeof(char *));
-	std::map<std::string, std::string>::const_iterator it = this->_env.begin();
-	for (int i = 0; it != this->_env.end(); it++, i++)
-	{
-		std::string tmp = it->first + "=" + it->second;
-		this->_ch_env[i] = strdup(tmp.c_str());
-	}
-	this->_argv = (char **)malloc(sizeof(char *) * 3);
-	this->_argv[0] = strdup(cgi_exec.c_str());
-	this->_argv[1] = strdup(this->_cgi_path.c_str());
-	this->_argv[2] = NULL;
-}
-
-
-void CgiHandler::initEnv(Request& req, const std::vector<Location>::iterator it_loc)
-{
-	int			poz;
-	std::string extension;
-	std::string ext_path;
-
-	extension = this->_cgi_path.substr(this->_cgi_path.find("."));
-	std::map<std::string, std::string>::iterator it_path = it_loc->_ext_path.find(extension);
-    if (it_path == it_loc->_ext_path.end())
-        return ;
-    ext_path = it_loc->_ext_path[extension];
-
-	this->_env["AUTH_TYPE"] = "Basic";
-	this->_env["CONTENT_LENGTH"] = req.getHeader("content-length");
-	this->_env["CONTENT_TYPE"] = req.getHeader("content-type");
-    this->_env["GATEWAY_INTERFACE"] = "CGI/1.1";
-	poz = findStart(this->_cgi_path, "cgi-bin/");
-	this->_env["SCRIPT_NAME"] = this->_cgi_path;
-    this->_env["SCRIPT_FILENAME"] = ((poz < 0 || (size_t)(poz + 8) > this->_cgi_path.size()) ? "" : this->_cgi_path.substr(poz + 8, this->_cgi_path.size()));
-	std::string path = req.getPath();
-	this->_env["PATH_INFO"] = getPathInfo(path, it_loc->getCgiExtension());
-    this->_env["PATH_TRANSLATED"] = it_loc->getRootLocation() + (this->_env["PATH_INFO"] == "" ? "/" : this->_env["PATH_INFO"]);
-	std::string query = req.getQuery();
-	this->_env["QUERY_STRING"] = decode(query);
-	if (!req.getRemoteAddr().empty())
-		this->_env["REMOTE_ADDR"] = req.getRemoteAddr();
-	poz = findStart(req.getHeader("host"), ":");
-	this->_env["SERVER_NAME"] = (poz > 0 ? req.getHeader("host").substr(0, poz) : "");
-	this->_env["SERVER_PORT"] = (poz > 0 ? req.getHeader("host").substr(poz + 1, req.getHeader("host").size()) : "");
-    this->_env["REQUEST_METHOD"] = req.getMethodStr();
-    this->_env["HTTP_COOKIE"] = req.getHeader("cookie");
-    this->_env["DOCUMENT_ROOT"] = it_loc->getRootLocation();
-	this->_env["REQUEST_URI"] = req.getPath() + (req.getQuery().empty() ? "" : "?" + req.getQuery());
-    this->_env["SERVER_PROTOCOL"] = "HTTP/1.1";
-    this->_env["REDIRECT_STATUS"] = "200";
-	this->_env["SERVER_SOFTWARE"] = "WEBSERV";
-
-	this->_ch_env = (char **)calloc(this->_env.size() + 1 , sizeof(char *));
-	std::map<std::string, std::string>::const_iterator it = this->_env.begin();
-	for (int i = 0; it != this->_env.end(); it++, i++)
-	{
-		std::string tmp = it->first + "=" + it->second;
-		this->_ch_env[i] = strdup(tmp.c_str());
-	}
-	this->_argv = (char **)malloc(sizeof(char *) * 3);
-	this->_argv[0] = strdup(ext_path.c_str());
-	this->_argv[1] = strdup(this->_cgi_path.c_str());
-	this->_argv[2] = NULL;
-}
-
 // ─── non-blocking CGI lifecycle ─────────────────────────────────────────────
 
 short CgiHandler::start(Request& request)
@@ -518,7 +413,7 @@ std::string CgiHandler::getPathInfo(std::string& path, std::vector<std::string> 
 {
 	std::string tmp;
 	size_t start, end;
-
+	
 	for (std::vector<std::string>::iterator it = extensions.begin(); it != extensions.end(); it++)
 	{
 		start = path.find(*it);
