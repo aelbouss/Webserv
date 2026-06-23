@@ -65,6 +65,7 @@ class	multiplexing
 		void	prepare_master_sockets();
 		
 		void	cluster_controlling();	
+		bool handle_cgi_pipe_event(int fd, short revents);
 		int	is_master_socket(int fd);
 		void existing_client(int fd);
 		void abort_client(int fd);

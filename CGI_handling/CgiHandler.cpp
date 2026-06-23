@@ -413,7 +413,7 @@ std::string CgiHandler::getPathInfo(std::string& path, std::vector<std::string> 
 {
 	std::string tmp;
 	size_t start, end;
-	
+
 	for (std::vector<std::string>::iterator it = extensions.begin(); it != extensions.end(); it++)
 	{
 		start = path.find(*it);

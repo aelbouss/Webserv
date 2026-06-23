@@ -476,7 +476,7 @@ void	multiplexing::handle_cgi_read(int pipe_fd)
 	finish_cgi(client_fd, false);
 }
 
-void	multiplexing::finish_cgi(int client_fd, bool timed_out)
+void	multiplexing::	finish_cgi(int client_fd, bool timed_out)
 {
 	std::map<int, client>::iterator it = client_data.find(client_fd);
 	if (it == client_data.end())
@@ -640,6 +640,41 @@ int	multiplexing::is_master_socket(int fd)
 	return (0);
 }
 
+bool multiplexing::handle_cgi_pipe_event(int fd, short revents)
+{
+    std::map<int, int>::iterator pit = cgi_pipe_to_client.find(fd);
+    if (pit == cgi_pipe_to_client.end())
+        return false;
+
+    int cfd = pit->second;
+    std::map<int, client>::iterator cit = client_data.find(cfd);
+    if (cit == client_data.end())
+    {
+        unregister_pipe(fd);
+        return true;
+    }
+
+    CgiHandler* cgi = cit->second.get_cgi();
+    bool isRead = (cgi && fd == cgi->getReadFd());
+    if (isRead)
+    {
+        if (revents & (POLLIN | POLLHUP | POLLERR))
+            handle_cgi_read(fd);
+    }
+    else
+    {
+        if (revents & (POLLHUP | POLLERR))
+        {
+            unregister_pipe(fd);
+            if (cgi)
+                cgi->closeWriteFd();
+        }
+        else if (revents & POLLOUT)
+            handle_cgi_write(fd);
+    }
+    return true;
+}
+
 /*
 	* the routine below runs the server main job 
 	*/
@@ -647,11 +682,11 @@ int	multiplexing::is_master_socket(int fd)
 void	multiplexing::cluster_controlling()
 {
 	int	activity;
-	const int CGI_TIMEOUT = 10;
+	const time_t CGI_TIMEOUT = 10;
 
 	std::cout << "the server is running ..." << std::endl;
 
-	while (g_stop == 0)
+	while (!g_stop)
 	{
 		// Avoid calling poll() with an empty array (UB). If no fds are present,
 		// sleep briefly and continue.
@@ -686,7 +721,7 @@ void	multiplexing::cluster_controlling()
 		if (fds_list.empty())
 			continue;
 
-		activity = poll(&fds_list[0], fds_list.size() , -1);
+		activity = poll(&fds_list[0], fds_list.size() , 1000);
 		if (activity < 0 )
 		{
 			if (errno == EINTR) // just the os pauses the code we baypass this
@@ -707,40 +742,8 @@ void	multiplexing::cluster_controlling()
 		{
 			int fd = ready[i].fd;
 			short revents = ready[i].revents;
-			std::map<int, int>::iterator pit = cgi_pipe_to_client.find(fd);
-			if (pit != cgi_pipe_to_client.end())
-			{
-				int cfd = pit->second;
-				std::map<int, client>::iterator cit = client_data.find(cfd);
-				if (cit == client_data.end())
-				{
-					unregister_pipe(fd);
-					continue;
-				}
-				CgiHandler* cgi = cit->second.get_cgi();
-				bool isRead = (cgi && fd == cgi->getReadFd());
-				if (isRead)
-				{
-					// A read end may report POLLIN and POLLHUP together when
-					// the CGI writes its output and exits at once. Always read:
-					// read() drains the buffered data first and only returns 0
-					// (EOF) once it is fully consumed, which triggers finish.
-					if (revents & (POLLIN | POLLHUP | POLLERR))
-						handle_cgi_read(fd);
-				}
-				else
-				{
-					if (revents & (POLLHUP | POLLERR))
-					{
-						unregister_pipe(fd);
-						if (cgi)
-							cgi->closeWriteFd();
-					}
-					else if (revents & POLLOUT)
-						handle_cgi_write(fd);
-				}
-				continue;
-			}
+            if (handle_cgi_pipe_event(fd, revents))
+                continue;
 
 			// 2) Master listening socket?
 			if (is_master_socket(fd))
