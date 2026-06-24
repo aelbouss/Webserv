@@ -48,7 +48,7 @@ std::string statusCodeString(short statusCode)
         case 400:
             return "Bad Request";
         case 401:
-            return "Unauthorized";
+            return "Unaut206horized";
         case 403:
             return "Forbidden";
         case 404:

@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>504 Gateway Timeout — webserv</title>
+<style>
+  :root{
+    --ink:#070b14; --panel:#0c1322; --panel2:#0a1019;
+    --line:rgba(120,200,255,.12); --line2:rgba(120,200,255,.22);
+    --txt:#e6f0fb; --dim:#7d93ad; --faint:#475569;
+    --cyan:#22d3ee; --mag:#f472b6; --amber:#fbbf24; --green:#34d399; --red:#fb7185;
+    --mono:ui-monospace,"JetBrains Mono","SF Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:
+      radial-gradient(1100px 500px at 80% -10%, rgba(251,113,133,.07), transparent 60%),
+      radial-gradient(900px 600px at -10% 110%, rgba(244,114,182,.06), transparent 60%),
+      var(--ink);
+    color:var(--txt); font-family:var(--sans); line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh; display:flex; flex-direction:column;
+  }
+  a{color:var(--cyan);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* ── header ─────────────────────────────────────────────── */
+  header{
+    padding:26px clamp(16px,4vw,48px) 18px;
+    border-bottom:1px solid var(--line);
+    display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;
+  }
+  .brand{font-weight:800;font-size:clamp(1.3rem,3.4vw,2rem);letter-spacing:-.5px}
+  .brand b{color:var(--cyan)}
+  .brand .slash{color:var(--mag);margin:0 .35em}
+  .tagline{color:var(--dim);font:.72rem/1.4 var(--mono);letter-spacing:2px;text-transform:uppercase;margin-top:4px}
+  .conn{display:flex;align-items:center;gap:9px;font:.72rem var(--mono);letter-spacing:1px;color:var(--dim);text-transform:uppercase}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--red);box-shadow:0 0 12px var(--red)}
+
+  /* ── wire ───────────────────────────────────────────────── */
+  .wire-wrap{
+    padding:22px clamp(16px,4vw,48px);
+    border-bottom:1px solid var(--line);
+    display:grid;grid-template-columns:1fr;gap:14px;
+  }
+  .wire{position:relative;height:64px;display:flex;align-items:center;justify-content:space-between}
+  .node{display:flex;flex-direction:column;align-items:center;gap:6px;z-index:2}
+  .node .ring{
+    width:42px;height:42px;border-radius:50%;border:1.5px solid var(--line2);
+    display:grid;place-content:center;font:.7rem var(--mono);color:var(--cyan);background:var(--panel);
+  }
+  .node .ring.dead{color:var(--red);border-color:rgba(251,113,133,.35)}
+  .node small{font:.62rem var(--mono);letter-spacing:1.5px;color:var(--dim);text-transform:uppercase}
+  .track{
+    position:absolute;left:46px;right:46px;top:50%;height:2px;transform:translateY(-50%);
+    background:linear-gradient(90deg,rgba(251,113,133,.3),rgba(251,113,133,.08),rgba(251,113,133,.3));
+    border-radius:2px;
+  }
+  /* animated timeout pulse — goes right, stalls, fades */
+  .track::after{
+    content:'';position:absolute;top:50%;left:0;
+    width:10px;height:10px;border-radius:50%;
+    transform:translate(-50%,-50%);
+    background:var(--red);box-shadow:0 0 14px var(--red);
+    animation:stall 2.4s ease-in-out infinite;
+  }
+  @keyframes stall{
+    0%  {left:0%;opacity:0;transform:translate(-50%,-50%) scale(0)}
+    10% {left:15%;opacity:1;transform:translate(-50%,-50%) scale(1)}
+    55% {left:72%;opacity:1;transform:translate(-50%,-50%) scale(1)}
+    70% {left:72%;opacity:.4;transform:translate(-50%,-50%) scale(.7)}
+    85% {left:72%;opacity:0;transform:translate(-50%,-50%) scale(0)}
+    100%{left:72%;opacity:0}
+  }
+  .readout{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;font-family:var(--mono)}
+  .code{font-size:2.4rem;font-weight:800;letter-spacing:-1px;color:var(--red)}
+  .rmeta{font-size:.8rem;color:var(--dim)}
+  .rmeta b{color:var(--txt);font-weight:600}
+
+  /* ── main content ───────────────────────────────────────── */
+  main{
+    flex:1;display:flex;align-items:center;justify-content:center;
+    padding:clamp(32px,6vw,80px) clamp(16px,4vw,48px);
+  }
+  .err-card{
+    background:var(--panel);border:1px solid rgba(251,113,133,.2);
+    border-radius:16px;padding:clamp(24px,4vw,48px);
+    max-width:560px;width:100%;
+  }
+  .eyebrow{
+    font:.62rem var(--mono);letter-spacing:2px;text-transform:uppercase;
+    color:var(--red);margin-bottom:12px;
+  }
+  .err-card h1{
+    margin:0 0 10px;font-size:clamp(1.4rem,4vw,2rem);font-weight:800;letter-spacing:-.5px;
+  }
+  .err-card p{margin:0 0 24px;color:var(--dim);font-size:.9rem;line-height:1.6}
+
+  .detail{
+    background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+    padding:14px 16px;font-family:var(--mono);font-size:.76rem;
+    display:flex;flex-direction:column;gap:7px;margin-bottom:24px;
+  }
+  .detail-row{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .detail-row .k{color:var(--faint)}
+  .detail-row .v{color:var(--txt);text-align:right}
+  .detail-row .v.err{color:var(--red)}
+
+  .actions{display:flex;gap:10px;flex-wrap:wrap}
+  button,a.btn{
+    font-family:var(--mono);font-size:.78rem;cursor:pointer;color:var(--txt);
+    background:#101828;border:1px solid var(--line2);border-radius:8px;
+    padding:9px 16px;transition:.12s;text-decoration:none;display:inline-block;
+  }
+  button:hover,a.btn:hover{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 0 1px rgba(34,211,238,.25)}
+  button:active,a.btn:active{transform:translateY(1px)}
+
+  footer{
+    padding:18px clamp(16px,4vw,48px);color:var(--faint);
+    font:.7rem var(--mono);border-top:1px solid var(--line);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="brand"><b>webserv</b><span class="slash">//</span>protocol console</div>
+    <div class="tagline">manual test harness · HTTP/1.1</div>
+  </div>
+  <div class="conn"><span class="dot"></span><span>timeout</span></div>
+</header>
+
+<section class="wire-wrap">
+  <div class="wire">
+    <div class="node"><div class="ring">YOU</div><small>client</small></div>
+    <div class="track"></div>
+    <div class="node"><div class="ring dead">CGI</div><small>script</small></div>
+  </div>
+  <div class="readout">
+    <span class="code">504</span>
+    <span class="rmeta"><b>Gateway Timeout</b> — the upstream script did not respond in time.</span>
+  </div>
+</section>
+
+<main>
+  <div class="err-card">
+    <div class="eyebrow">error · 504</div>
+    <h1>Gateway Timeout</h1>
+    <p>The CGI script was killed after exceeding the maximum execution time. The server is still running — this request just took too long.</p>
+
+    <div class="detail">
+      <div class="detail-row"><span class="k">status</span><span class="v err">504 Gateway Timeout</span></div>
+      <div class="detail-row"><span class="k">cause</span><span class="v">upstream script exceeded time limit</span></div>
+      <div class="detail-row"><span class="k">server</span><span class="v">webserv/1.0 · still alive</span></div>
+    </div>
+
+    <div class="actions">
+      <a class="btn" href="/">← back to console</a>
+      <button onclick="history.back()">retry</button>
+    </div>
+  </div>
+</main>
+
+<footer>served by your webserv build · all requests are real and same-origin · run: <span style="color:var(--cyan)">./webserv webserv.conf</span></footer>
+
+</body>
+</html>
