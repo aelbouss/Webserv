@@ -1310,7 +1310,7 @@ std::string Response::statusMessage(int code)
             return "Too Many Requests";
         case 431:
             return "Request Header Fields Too Large";
-        case 451:Not Found
+        case 451:
             return "Unavailable for Legal Reasons";
         case 500:
             return "Internal Server Error";

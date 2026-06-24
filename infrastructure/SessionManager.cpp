@@ -7,7 +7,6 @@
 #include <iomanip>
 
 static const size_t kSessionIdBytes = 16;
-// static const size_t kSessionIdHexLen = kSessionIdBytes * 2;
 
 SessionManager::SessionManager()
 	: _cookieName("WEBSERVSID"), _ttlSeconds(3600), _maxSessions(10000)
@@ -107,19 +106,6 @@ std::string SessionManager::trimCopy(const std::string& s)
 		--end;
 	return s.substr(begin, end - begin);
 }
-
-// bool SessionManager::isHexString(const std::string& value)
-// {
-// 	if (value.size() != kSessionIdHexLen)
-// 		return false;
-// 	for (size_t i = 0; i < value.size(); ++i)
-// 	{
-// 		char c = value[i];
-// 		if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
-// 			return false;
-// 	}
-// 	return true;
-// }
 
 std::string SessionManager::extractCookieValue(const std::string& cookieHeader, const std::string& name) const
 {
