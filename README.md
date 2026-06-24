@@ -1,4 +1,4 @@
-*This project has been created as part of the 42 curriculum by [Mohammed Elmahfoudi (maelmahf)](https://github.com/maelmahf), [Mohamed Ben Talha (mobentalha)](https://github.com/mobentalha), [Anass Elboussaili (aelbouss)](https://github.com/aelbouss).*
+*This project has been created as part of the 42 curriculum by <maelmahf> , <aelbouss> and <mohben-t>.*
 
 ---
 
