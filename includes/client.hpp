@@ -119,6 +119,7 @@ class	client : public BodySink
 		const ServerConfig*	get_cgi_server() const;
 		time_t	get_cgi_start() const;
 		void	clear_cgi();
+		void reset_for_next_request();
 };
 
 # endif

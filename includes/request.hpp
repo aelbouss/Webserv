@@ -55,6 +55,7 @@ class Request
         const std::string& getUploadResultPath() const;
         const std::string& getUploadResultUrl() const;
         bool hasUploadResult() const;
+        void reset();
 
         Method getMethod() const;
         std::string getMethodStr() const;

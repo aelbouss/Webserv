@@ -91,7 +91,7 @@ class Response
 		off_t                                _file_range_start;
 
 		// Helper methods (no duplication)
-		void setDefaultHeaders();
+		void setDefaultHeaders(const Request* request = NULL);
 		void error(int code, const ServerConfig* server);
 		void buildErrorPage(int code, const ServerConfig* server);
 		bool executeCgiHandler(const std::string& filePath,

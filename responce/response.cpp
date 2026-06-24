@@ -683,10 +683,20 @@ void Response::applyCgiOutput(const std::string& output)
 	applyCgiOutputHeaders(*this, output);
 }
 
-void Response::setDefaultHeaders()
+void Response::setDefaultHeaders(const Request* request)
 {
-	_headers["Server"]     = "Webserv/1.0";
-	_headers["Connection"] = "close";
+    _headers["Server"] = "Webserv/1.0";
+
+    std::string conn = request ? request->getHeader("connection") : "close";
+    std::string ver  = request ? request->getVersion() : "HTTP/1.0";
+
+    bool keepAlive = false;
+    if (ver == "HTTP/1.1")
+        keepAlive = (toLowerCopy(conn) != "close");
+    else
+        keepAlive = (toLowerCopy(conn) == "keep-alive");
+
+    _headers["Connection"] = keepAlive ? "keep-alive" : "close";
 }
 
 void Response::error(int code, const ServerConfig* server)
@@ -777,13 +787,13 @@ void Response::build(const std::string& method,
 		{
 			int code = request->getErrorCode();
 			error(code ? code : 400, server);
-			setDefaultHeaders();
+			setDefaultHeaders(request);;
 			return;
 		}
 		if (request->getVersion() == "HTTP/1.1" && request->getHeader("host").empty())
 		{
 			error(400, server);
-			setDefaultHeaders();
+			setDefaultHeaders(request);;
 			return;
 		}
 	}
@@ -792,7 +802,7 @@ void Response::build(const std::string& method,
 	if (!(method == "GET" || method == "POST" || method == "DELETE"))
 	{
 		error(501, server);
-		setDefaultHeaders();
+		setDefaultHeaders(request);;
 		return;
 	}
 
@@ -804,7 +814,7 @@ void Response::build(const std::string& method,
 	if (bodyLimit != 0 && requestBody.size() > bodyLimit)
 	{
 		error(413, server);
-		setDefaultHeaders();
+		setDefaultHeaders(request);;
 		return;
 	}
 
@@ -816,7 +826,7 @@ void Response::build(const std::string& method,
 		{
 			error(405, server);
 			_headers["Allow"] = buildAllowHeaderFromMethods(methods);
-			setDefaultHeaders();
+			setDefaultHeaders(request);;
 			return;
 		}
 
@@ -825,7 +835,7 @@ void Response::build(const std::string& method,
 			setStatus(302);
 			setHeader("Location", location->getReturn());
 			setBody("");
-			setDefaultHeaders();
+			setDefaultHeaders(request);;
 			return;
 		}
 
@@ -854,13 +864,13 @@ void Response::build(const std::string& method,
 					setStatus(200);
 					setHeader("Content-Type", "text/html");
 					setBody(buildAutoindexPage(filePath, requestPath));
-					setDefaultHeaders();
+					setDefaultHeaders(request);;
 					return;
 				}
 				else
 				{
 					error(403, server);
-					setDefaultHeaders();
+					setDefaultHeaders(request);;
 					return;
 				}
 			}
@@ -898,25 +908,25 @@ void Response::build(const std::string& method,
 						setStatus(201);
 						setHeader("Content-Type", "text/plain");
 						setBody("Created: " + request->getUploadResultUrl());
-						setDefaultHeaders();
+						setDefaultHeaders(request);;
 						return;
 					}
 					error(500, server);
-					setDefaultHeaders();
+					setDefaultHeaders(request);;
 					return;
 				}
 				int uploadStatus = handleUploadPost(requestPath, requestBody, *location, request);
 				if (uploadStatus != 201)
 				{
 					error(uploadStatus, server);
-					setDefaultHeaders();
+					setDefaultHeaders(request);;
 					return;
 				}
 			}
 			else
 			{
 				error(403, server);
-				setDefaultHeaders();
+				setDefaultHeaders(request);;
 				return;
 			}
 		}
@@ -958,7 +968,7 @@ void Response::build(const std::string& method,
 			else
 			{
 				error(404, server);
-				setDefaultHeaders();
+				setDefaultHeaders(request);;
 				return;
 			}
 		}
@@ -981,7 +991,7 @@ void Response::build(const std::string& method,
 		}
 	}
 
-	setDefaultHeaders();
+	setDefaultHeaders(request);;
 }
 
 void Response::serveFile(const std::string& filePath, const ServerConfig* server,

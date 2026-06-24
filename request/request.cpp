@@ -71,6 +71,31 @@ void Request::setMaxBodySize(unsigned long n)
     }
 }
 
+void Request::reset()
+{
+    _method = UNKNOWN;
+    _path.clear();
+    _query.clear();
+    _version.clear();
+    _headers.clear();
+    _body.clear();
+    _state = REQUEST_LINE;
+    _buffer.clear();
+    _chunkSize = 0;
+    _maxBodySize = 0;
+    _hasBodyLimit = false;
+    _headersComplete = false;
+    _bodyConfigReady = false;
+    _errorCode = 0;
+    _remoteAddr.clear();
+    _bodySink = NULL;
+    _bodyReceived = 0;
+    _contentLength = 0;
+    _isChunked = false;
+    _uploadResultPath.clear();
+    _uploadResultUrl.clear();
+}
+
 bool Request::hasBodyLimit() const
 {
     return _hasBodyLimit;

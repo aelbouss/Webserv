@@ -300,46 +300,64 @@ void	multiplexing::build_and_queue_response(int fd)
 	finalize_and_queue(fd, response);
 }
 
-void	multiplexing::send_pending_response(int fd)
+static std::string toLowerCopy(const std::string& s)
 {
-	std::map<int, client>::iterator client_idx = client_data.find(fd);
-	if (client_idx == client_data.end())
-		return;
-
-	const std::string& payload = client_idx->second.get_response();
-	size_t total = payload.size();
-	size_t sent_total = client_idx->second.get_bytes_sent();
-
-	if (sent_total < total)
-	{
-		// Exactly ONE send() per POLLOUT event. The poll loop will call
-		// us again on the next iteration if there is more to send.
-		ssize_t sent = send(fd, payload.data() + sent_total,
-								total - sent_total, 0);
-		if (sent > 0)
-		{
-			client_idx->second.add_bytes_sent(static_cast<size_t>(sent));
-			client_idx->second.touch_activity();
-			if (client_idx->second.get_bytes_sent() >= total)
-			{
-				// Whole response delivered -> close (Connection: close).
-				close_connection(fd);
-				abort_client(fd);
-			}
-			return;
-		}
-		// sent <= 0 : peer closed (0) or write error (<0). In either
-		// case the client is removed (no errno inspection).
-		close_connection(fd);
-		abort_client(fd);
-		return;
-	}
-
-	// Nothing left to send.
-	close_connection(fd);
-	abort_client(fd);
+    std::string out = s;
+    for (size_t i = 0; i < out.size(); ++i)
+        out[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(out[i])));
+    return out;
 }
 
+void multiplexing::send_pending_response(int fd)
+{
+    std::map<int, client>::iterator client_idx = client_data.find(fd);
+    if (client_idx == client_data.end())
+        return;
+
+    const std::string& payload = client_idx->second.get_response();
+    size_t total = payload.size();
+    size_t sent_total = client_idx->second.get_bytes_sent();
+
+    if (sent_total < total)
+    {
+        ssize_t sent = send(fd, payload.data() + sent_total,
+                            total - sent_total, 0);
+        if (sent > 0)
+        {
+            client_idx->second.add_bytes_sent(static_cast<size_t>(sent));
+            client_idx->second.touch_activity();
+            if (client_idx->second.get_bytes_sent() >= total)
+            {
+                // Check if client wants keep-alive
+                std::string conn = client_idx->second.get_request().getHeader("connection");
+                std::string ver  = client_idx->second.get_request().getVersion();
+                bool keepAlive = false;
+                if (ver == "HTTP/1.1")
+                    keepAlive = (toLowerCopy(conn) != "close");
+                else
+                    keepAlive = (toLowerCopy(conn) == "keep-alive");
+
+                if (keepAlive)
+                {
+                    // Reset client state and wait for next request
+                    client_idx->second.reset_for_next_request();
+                    set_client_events(fd, POLLIN);
+                }
+                else
+                {
+                    close_connection(fd);
+                    abort_client(fd);
+                }
+            }
+            return;
+        }
+        close_connection(fd);
+        abort_client(fd);
+        return;
+    }
+    close_connection(fd);
+    abort_client(fd);
+}
 
 // ── async CGI: register pipe fds in the poll set ──
 void	multiplexing::set_client_events(int fd, short events)

@@ -240,6 +240,23 @@ void	client::set_client_fd(int clien_fd)
 	touch_activity();
 }
 
+void client::reset_for_next_request()
+{
+    request.reset();
+    response_data.clear();
+    bytes_sent = 0;
+    is_finished_reading = false;
+    if (file_fd >= 0)
+    {
+        close(file_fd);
+        file_fd = -1;
+    }
+    file_size = 0;
+    file_offset = 0;
+    streaming_file = false;
+    reset_upload_state();
+    touch_activity();
+}
 
 void	client::set_finished_reading(bool var) {  is_finished_reading = var; }
 
