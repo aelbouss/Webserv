@@ -166,9 +166,6 @@ make re       # full rebuild
 
 ### AI Usage
 
-AI was used throughout the project in the following ways:
+AI was used to help us understand the project structure and clarify some concepts.
 
-- **Architecture design** — reasoning through the non-blocking CGI state machine (`start()`, `pumpWrite()`, `pumpRead()`, `reapChild()`, `killAndReap()`) and how to register CGI pipe fds directly into the `poll()` fd list
-- **Debugging** — diagnosing fd=0 corruption under `siege` load (stdin closure causing `accept()` to return 0), iterator invalidation in the poll loop after `erase_client_state()`, and duplicate `Set-Cookie` header loss caused by `std::map`
-- **HTTP compliance** — verifying correct `keep-alive` / `Connection` header semantics, `206 Partial Content` Range response format, and `504 Gateway Timeout` behavior after CGI timeout
-- **Code review** — identifying blocking `waitpid()` calls that serialized connections under load and replacing them with `WNOHANG` non-blocking variants
+It also helped us fix small mistakes during development.
